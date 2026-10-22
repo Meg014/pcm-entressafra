@@ -1,0 +1,1 @@
+<div class="d-flex flex-wrap justify-content-between gap-3 mt-3"><span><?= $this->Paginator->counter('Página {{page}} de {{pages}} · {{count}} registros') ?></span><ul class="pagination"><?= $this->Paginator->prev('Anterior') ?><?= $this->Paginator->numbers() ?><?= $this->Paginator->next('Próxima') ?></ul></div>

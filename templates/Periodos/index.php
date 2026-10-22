@@ -1,0 +1,7 @@
+<?php $this->assign('title','Escolher entressafra'); ?>
+<div class="mx-auto" style="max-width:850px"><div class="page-heading"><div><h1>PCM — Controle de Entressafra</h1><p class="text-secondary">Selecione o período de trabalho.</p></div></div>
+<?php foreach($periodos as $periodo): ?><section class="panel my-3"><div class="d-flex justify-content-between align-items-start gap-3"><div><h2>Entressafra <?= h($periodo->nome) ?></h2><p class="text-secondary"><?= h($periodo->data_inicio->format('d/m/Y')) ?> a <?= h($periodo->data_fim->format('d/m/Y')) ?></p></div><span class="badge <?= $periodo->status==='ativa'?'text-bg-success':'text-bg-secondary' ?>"><?= h(\App\Model\Table\EntressafrasTable::STATUS[$periodo->status]) ?></span></div>
+<?php if($periodo->status==='encerrada'): ?><p class="small text-secondary">Consulta histórica de apontamentos, atividades e Curva S. Lançamentos bloqueados.</p><?php endif; ?>
+<?= $this->Form->create(null,['url'=>['action'=>'selecionar','_method'=>'POST']]) ?><?= $this->Form->hidden('periodo_id',['value'=>$periodo->id]) ?><?= $this->Form->button($periodo->status==='encerrada'?'Consultar entressafra':'Entrar na entressafra',['class'=>'btn btn-primary w-100']) ?><?= $this->Form->end() ?></section><?php endforeach; ?>
+<?php if($periodos->isEmpty()): ?><p class="alert alert-info">Nenhuma entressafra cadastrada.</p><?php endif; ?>
+<?= $this->Html->link('Cadastrar entressafra',['controller'=>'Entressafras','action'=>'add'],['class'=>'btn btn-outline-primary']) ?></div>

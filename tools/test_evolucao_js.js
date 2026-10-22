@@ -1,0 +1,38 @@
+function testEvolucao(source) {
+    let assertions=0;
+    const check=(condition,message)=>{assertions++;if(!condition)throw new Error(message);};
+    const make=()=>({value:'',disabled:false,events:{},addEventListener(type,fn){this.events[type]=fn;}});
+    const inputs=[make(),make(),make()];
+    const hidden=inputs.map(()=>[make(),make(),make()]);
+    const outputs=inputs.map(()=>({textContent:''}));
+    inputs.forEach((input,i)=>{input.dataset={anterior:'20'};input.closest=()=>({querySelectorAll:()=>hidden[i],querySelector:()=>outputs[i]});});
+    const form=make();form.querySelectorAll=selector=>selector==='[data-percentual]'?inputs:[];
+    const status={textContent:''},events={};let confirm=true;
+    const window={confirm:()=>confirm,addEventListener:(type,fn)=>events[type]=fn};
+    const document={getElementById:id=>id==='evolucao-form'?form:status};
+    new Function('document','window',source)(document,window);
+    inputs[0].value='0';inputs[0].events.input();
+    check(hidden[0].every(f=>!f.disabled),'Zero explícito deve habilitar os identificadores da linha.');
+    check(status.textContent.startsWith('1 '),'Deve contar uma alteração.');
+    inputs[1].value='50.25';inputs[1].events.input();
+    check(status.textContent.startsWith('2 '),'Deve contar alterações de várias O.S.');
+    inputs[1].value='30';inputs[1].events.input();
+    check(outputs[1].textContent.includes('+10 p.p.'),'30 acumulado após 20 deve resultar em +10 p.p.');
+    inputs[1].value='20';inputs[1].events.input();
+    check(outputs[1].textContent.includes('0 p.p.')&&outputs[1].textContent.includes('verificado sem avanço'),'Repetir o acumulado confirma sem criar avanço.');
+    inputs[1].value='50.25';inputs[1].events.input();
+    let prevented=false;confirm=false;form.events.submit({preventDefault(){prevented=true;}});
+    check(prevented,'Cancelar confirmação deve impedir gravação.');
+    check(inputs[1].value==='50.25','Cancelar não pode apagar o percentual.');
+    inputs[0].value='';inputs[0].events.input();
+    check(hidden[0].every(f=>f.disabled),'Limpar deve remover a linha do lote.');
+    check(inputs[1].value==='50.25','Limpar uma O.S. não pode alterar outra.');
+    let navigationBlocked=false;events.beforeunload({preventDefault(){navigationBlocked=true;}});
+    check(navigationBlocked,'Navegação deve alertar sobre alterações pendentes.');
+    confirm=true;prevented=false;form.events.submit({preventDefault(){prevented=true;}});
+    check(!prevented,'Confirmação deve permitir salvar.');
+    check(inputs[0].disabled&&inputs[2].disabled&&!inputs[1].disabled,'Somente percentuais explicitamente alterados devem ser enviados.');
+    navigationBlocked=false;events.beforeunload({preventDefault(){navigationBlocked=true;}});
+    check(!navigationBlocked,'Gravação confirmada deve permitir navegação.');
+    return {assertions,status:'OK'};
+}
