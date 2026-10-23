@@ -19,26 +19,28 @@ class OperacionalController extends OperacaoController
     }
     public function porcentagem()
     {
-        $service=new OperacaoRapida();$selectedOrder=null;$reference=null;$weeks=[];
-        $id=$this->request->getData('atividade_id')??$this->request->getQuery('atividade_id');
+        $service=new \App\Service\PorcentagensLote();$season=(int)\App\Service\PeriodoContexto::id();
+        $area=(int)$this->request->getQuery('area_id',0);$search=$this->request->getQuery('os','');$pending=[];
+        $key=(string)($this->request->getData('chave')??bin2hex(random_bytes(16)));$ajax=$this->request->getHeaderLine('X-Requested-With')==='XMLHttpRequest';
         try{
-            if($id!==null && $id!=='') {
-                if(!is_scalar($id)||!ctype_digit((string)$id))throw new \DomainException('Selecione uma O.S. válida.');
-                $activity=$service->activity($this->currentUser,(int)$id,true);$season=(int)$activity->entressafra_id;
-                $requested=$this->request->getData('referencia')??$this->request->getQuery('referencia');
-                if($requested==='')$requested=null;
-                if($requested!==null){if(!is_string($requested))throw new \DomainException('Referência inválida.');[$automatic]=$service->reference($season,null,(int)$activity->id);if($requested!==$automatic)Access::pcm($this->currentUser);}
-                [$reference]=$service->reference($season,$requested,(int)$activity->id);$selectedOrder=$service->result($activity,true);
-                $state=(new Evolucao())->state((int)$id,$reference);$selectedOrder=array_replace($selectedOrder,['referencia'=>$reference,'anterior'=>$state['anterior'],'percentual'=>$state['percentual'],'revisao'=>$state['revisao']]);
-                $weeks=(new Evolucao())->calendar($season);
-                if($this->request->is('post')) {
-                    $d=$this->request->getData();
-                    [$automatic]=$service->reference($season);
-                    (new Evolucao())->saveBatch((int)$this->currentUser->id,$season,$reference,[['atividade_id'=>(int)$id,'percentual'=>$d['percentual']??null,'revisao'=>$d['revisao']??null,'motivo'=>$d['motivo']??'']],(string)($d['chave']??''),$reference===$automatic);
-                    $this->Flash->success('Percentual acumulado registrado. Você pode lançar outra O.S.');return $this->redirect(['action'=>'porcentagem']);
-                }
-            }elseif($this->request->is('post')){throw new \DomainException('Pesquise e selecione uma O.S. válida.');}
-        }catch(\DomainException $e){$this->Flash->error($e->getMessage());}
-        $key=$this->request->getData('chave')??bin2hex(random_bytes(16));$this->set(compact('selectedOrder','reference','weeks','key'));
+            if(!is_string($search))throw new \DomainException('Pesquisa inválida.');
+            if($this->request->is('post')){
+                if($this->request->getData('atividade_id')!==null)throw new \DomainException('Use o lançamento em lote. O lançamento individual foi encerrado.');
+                $json=$this->request->getData('alteracoes_json','[]');
+                if(!is_string($json)||strlen($json)>2000000)throw new \DomainException('Lote muito extenso.');
+                try{$pending=json_decode($json,true,512,JSON_THROW_ON_ERROR);}catch(\JsonException){throw new \DomainException('Alterações inválidas.');}
+                if(!is_array($pending))throw new \DomainException('Alterações inválidas.');
+                $result=$service->save((int)$this->currentUser->id,$season,$area,$pending,$key);
+                $this->Flash->success($result['quantidade'].' O.S. atualizada(s).');
+                if($ajax)return $this->response->withType('application/json')->withHeader('Cache-Control','no-store')->withStringBody(json_encode(['ok'=>true]+$result));
+                return $this->redirect($this->request->getRequestTarget());
+            }
+        }catch(\DomainException $e){
+            if($ajax)return $this->response->withStatus(422)->withType('application/json')->withStringBody(json_encode(['error'=>$e->getMessage()]));
+            $this->Flash->error($e->getMessage());
+        }
+        try{$batch=$service->page($this->currentUser,$season,$area,is_string($search)?$search:'',(int)$this->request->getQuery('pagina',1));}
+        catch(\DomainException $e){$this->Flash->error($e->getMessage());$batch=['areas'=>$service->areas($this->currentUser,$season),'rows'=>[],'total'=>0,'pages'=>1,'page'=>1,'reference'=>null];}
+        $this->set(compact('batch','season','area','search','key','pending'));
     }
 }

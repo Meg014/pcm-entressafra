@@ -84,7 +84,7 @@ class ApontamentosController extends OperacaoController
         $selectedId=$this->request->getData('atividade_id') ?? $this->request->getQuery('atividade_id');
         if (!$row && is_scalar($selectedId) && ctype_digit((string)$selectedId) && (int)$selectedId>0) {
             $selected=$this->activitiesQuery()->where(['Atividades.id'=>(int)$selectedId,'Cadernos.ativo'=>true,'Atividades.disponivel_totvs'=>true])->first();
-            if ($selected) { try{ $selectedOrder=(new \App\Service\OperacaoRapida())->result((new \App\Service\OperacaoRapida())->activity($this->currentUser,(int)$selected->id)); }catch(\DomainException){} }
+            if ($selected) { try{ $selectedOrder=(new \App\Service\OperacaoRapida($this->totvs()))->result((new \App\Service\OperacaoRapida())->activity($this->currentUser,(int)$selected->id)); }catch(\DomainException){} }
         }
         $selectedEmployee=null;
         $employeeKey=$this->request->getData('funcionario_chave');

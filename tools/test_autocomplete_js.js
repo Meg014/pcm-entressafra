@@ -31,7 +31,7 @@ async function testAutocomplete(employeeSource, orderSource, withoutFilters=fals
     const timers = new Map(); let timerId = 0, calls = 0, url, fail = false, rows;
     const normal = {chave:'000123', nome:'Pessoa de teste', matricula:'000123', funcao:'00001', situacao:'NORMAL', ativo:true};
     const blocked = {...normal, chave:'', ativo:false, situacao:'FÉRIAS'};
-    const linked = {id:'9', selecionavel:true, numero:'005523', filial:'01', servico:'ENTRESSAFRA', codigo_area:'CALDEI', setor_id:'7', setor:'Setor', caderno:'Caderno', situacao:'L'};
+    const linked = {id:'9', selecionavel:true, numero:'005523', filial:'01', centro_custo:'CC-INTERNO', servico:'ENTRESSAFRA', codigo_area:'CALDEI', setor_id:'7', setor:'Setor', caderno:'Caderno', situacao:'L',descricao:'Trocar vedação conforme caderno',setor_apresentacao:'DESTILARIA',rotulo_setor:'Setor'};
     rows = employee ? [blocked, normal, {...blocked,bloqueio:'Matrícula ambígua'}] : [{...linked,id:null,selecionavel:false,aviso:'Solicite vínculo ao PCM'},linked];
     const document = {getElementById:get, createElement:tag=>new Element(tag), addEventListener() {}};
     let identified=false;
@@ -45,6 +45,11 @@ async function testAutocomplete(employeeSource, orderSource, withoutFilters=fals
     if (!employee) assert((withoutFilters?!url.searchParams.get('setor_id'):url.searchParams.get('setor_id') === '7') && list.children.some(el=>el.tagName === 'a'), 'OS: scope and PCM action');
     input.emit('keydown',{key:'ArrowDown'}); input.emit('keydown',{key:'Enter'});
     assert(key.value === (employee ? '000123' : '9'), prefix + ': keyboard selection');
+    if(!employee){
+      const text=get('os-resumo').textContent;
+      assert(input.value==='005523'&&text.includes('Trocar vedação conforme caderno')&&text.includes('Setor: DESTILARIA'),'OS: compact description and principal sector');
+      assert(!/filial|TOTVS 01|C\.C\.|CC-INTERNO|CALDEI/i.test(text+list.children.filter(el=>el.tagName==='button').map(el=>el.textContent).join(' ')),'OS: internal metadata hidden in options and summary');
+    }
     if (employee) {
       assert(!get('funcionario-resumo').hidden && get('funcionario-resumo-nome').textContent === normal.nome && get('funcionario-resumo-matricula').textContent === 'Matrícula 000123', 'employee: compact confirmed summary');
       assert(!elements['funcionario-nome'] && !elements['funcionario-matricula'] && !elements['funcionario-funcao'] && !elements['funcionario-situacao'], 'employee: removed fields are never accessed');

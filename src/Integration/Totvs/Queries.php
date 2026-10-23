@@ -50,6 +50,7 @@ SQL;
     }
     public static function allows(string $sql): bool
     {
+        if($sql===PendingOrders::sql()) { return true; }
         if($sql===self::ORDER_NOTES) { return true; }
         if($sql===ListOrderQueries::numbers()) { return true; }
         if(BulkOrderQueries::allows($sql)) { return true; }

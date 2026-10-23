@@ -41,7 +41,7 @@ final class OrderAutocomplete
                 $identity=Orders::key($row['filial'],$row['numero']);
                 if (isset($seen[$identity])) { continue; }
                 $seen[$identity]=true;
-                $activity=Access::table('Atividades')->find()->where(['os_chave'=>$row['chave'],'os_numero'=>$row['numero'],'os_filial'=>$row['filial']])->first();
+                $activity=Access::table('Atividades')->find()->contain(['Cadernos','SetorExecutante'])->where(['os_chave'=>$row['chave'],'os_numero'=>$row['numero'],'os_filial'=>$row['filial']])->first();
                 $notebook=$activity ? ($notebookRows[$activity->caderno_id]??null) : null;
                 $selectable=$notebook && (int)$activity->setor_executante_id===(int)$sector->id && $activity->identificacao_setor==='area_totvs' && $activity->area_executante_totvs===$row['codigo_area'] && $activity->disponivel_totvs===true;
                 $results[]=[
@@ -51,11 +51,11 @@ final class OrderAutocomplete
                     'situacao'=>$row['situacao'],'setor'=>$sector->nome,'setor_id'=>(string)$sector->id,
                     'caderno'=>$notebook?->nome??'Sem vínculo disponível neste caderno/entressafra',
                     'aviso'=>$selectable?null:'O.S. encontrada no TOTVS, mas sem vínculo disponível nestes filtros. Solicite ao PCM o vínculo ao caderno correto ou a sincronização da atividade.',
-                ];
+                ]+($activity?OsApresentacao::activity($activity,$row):OsApresentacao::source($row,$sector->nome));
             }
         }
         usort($results,fn($a,$b)=>strcmp($a['numero'].'/'.$a['filial'],$b['numero'].'/'.$b['filial']));
         return ['results'=>array_slice($results,0,20),'has_more'=>$hasMore || count($results)>20,
-            'message'=>$configured?'Nenhuma O.S. aberta encontrada no TOTVS para as áreas e filtros autorizados. Para realizar apontamentos, solicite o vínculo ao caderno correto.':'Configure Área TOTVS e Filial nos setores autorizados e confira os filtros de entressafra/caderno. Solicite a configuração ao PCM.'];
+            'message'=>$configured?'Nenhuma O.S. aberta encontrada no TOTVS para as áreas e filtros autorizados. Para realizar apontamentos, solicite o vínculo ao caderno correto.':'Confira a identificação das equipes autorizadas e confira os filtros de entressafra/caderno. Solicite a configuração ao PCM.'];
     }
 }

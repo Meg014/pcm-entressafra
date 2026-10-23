@@ -31,6 +31,12 @@ class EvolucaoController extends OperacaoController
     }
     public function index()
     {
+        $this->request->allowMethod(['get']);
+        return $this->redirect(['controller'=>'Operacional','action'=>'porcentagem','?'=>array_intersect_key($this->request->getQueryParams(),array_flip(['area_id','os','pagina']))]);
+    }
+    public function correcoes()
+    {
+        Access::pcm($this->currentUser);$this->viewBuilder()->setTemplate('index');
         $s=new Evolucao(); [$season,$weeks,$reference]=$this->context($s);
         if ($this->request->is('post')) {
             try {

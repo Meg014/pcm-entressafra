@@ -169,11 +169,12 @@ class EtapaDoisTest extends TestCase
         $this->assertSame(3,$table->find()->where(['id IN'=>Access::notebookIds($this->sectors)])->count());
         $this->assertEquals($before,Access::table('Atividades')->get($this->activities[0])->toArray());
         $this->get('/cadernos/view/'.$book->id); $this->assertResponseOk(); $this->assertResponseContains('Mecânica'); $this->assertResponseContains('Elétrica');
-        $this->get('/cadernos/edit/'.$book->id); $this->assertResponseOk(); $this->assertResponseContains('name="setores[_ids][]"');
-        $this->enableCsrfToken(); $this->post('/cadernos/add',['nome'=>'Caderno pela interface','entressafra_id'=>$book->entressafra_id,'setores'=>['_ids'=>$this->sectors],'ativo'=>'1','area_fisica'=>'Moenda']);
+        $this->get('/cadernos/edit/'.$book->id); $this->assertResponseOk(); $this->assertResponseContains('name="area_curva_id"');$this->assertResponseNotContains('name="setores[_ids][]"');
+        $areas=Access::table('AreasFabrica');$area=$areas->saveOrFail(Access::entity($areas,['nome'=>'Moenda apresentação','entressafra_id'=>$book->entressafra_id]));
+        $this->enableCsrfToken(); $this->post('/cadernos/add',['nome'=>'Caderno pela interface','area_curva_id'=>$area->id,'setores'=>['_ids'=>$this->sectors],'area_fisica'=>'Moenda']);
         $created=$table->find()->where(['nome'=>'Caderno pela interface'])->firstOrFail();
-        $this->assertRedirect(['controller'=>'Cadernos','action'=>'view',$created->id]);
-        $this->assertCount(2,Access::notebookSectors((int)$created->id)); $this->assertSame('Moenda',$created->area_fisica);
+        $this->assertRedirect(['controller'=>'Cadernos','action'=>'index']);
+        $this->assertCount(0,Access::notebookSectors((int)$created->id)); $this->assertNull($created->area_fisica);$this->assertSame((int)$area->id,(int)$created->area_curva_id);
         $book=$table->patchEntity($book,['setores'=>['_ids'=>[$this->sectors[1]]]]);
         $this->assertFalse($table->save($book)); $this->assertNotEmpty($book->getError('setores'));
     }
@@ -251,17 +252,17 @@ class EtapaDoisTest extends TestCase
             $xpath=new \DOMXPath($document);
             $paths=[]; foreach ($xpath->query('//nav[@aria-label="Navegação principal"]//a') as $link) { $paths[]=$link->getAttribute('href'); }
             $allowed=$role!=='RESPONSAVEL_SETOR';
-            $this->assertSame($allowed?['/fila-pcm','/apontamentos/add','/lancar-porcentagem','/consulta-pcm','/controle-pcm']:['/apontamentos/add','/lancar-porcentagem','/','/atividades','/apontamentos','/evolucao'],$paths);
+            $this->assertSame($allowed?['/fila-pcm','/apontamentos/add','/lancar-porcentagem','/consulta-pcm','/controle-pcm']:['/apontamentos/add','/lancar-porcentagem','/','/atividades','/apontamentos'],$paths);
             $paths=[]; foreach ($xpath->query('//details[@id="pcm-user-menu"]//a') as $link) { $paths[]=$link->getAttribute('href'); }
             $expected=$allowed?['/entressafras','/setores','/cadernos']:[];
-            if ($role==='ADMIN_PCM') { $expected[]='/usuarios'; }
+            if ($role==='ADMIN_PCM') { $expected[]='/os-sem-caderno';$expected[]='/usuarios'; }
             if ($allowed) { $expected[]='/atividades'; }
             $this->assertSame($expected,$paths);
             $this->assertSame(1,$xpath->query('//details[@id="pcm-user-menu"]//form[@action="/logout" and @method="post"]//button[@type="submit"]')->length);
             $this->assertSame(0,$xpath->query('//main//a[@href="/vinculos-lote" and contains(@class,"btn-primary")]')->length);
             $this->assertSame(1,$xpath->query('//main//a[@href="/atividades/add"]')->length);
             $this->assertSame(1,$xpath->query($allowed?'//nav[@aria-label="Cadastros administrativos"]//a[@href="/atividades" and @aria-current="page"]':'//nav[@aria-label="Navegação principal"]//a[@href="/atividades" and @aria-current="page"]')->length);
-            $this->assertSame($allowed?0:1,$xpath->query('//header//a[@href="/evolucao"]')->length);
+            $this->assertSame(0,$xpath->query('//header//a[@href="/evolucao"]')->length);
             $this->get('/vinculos-lote'); $this->assertResponseCode($allowed?200:403);
             if ($allowed) {
                 $this->assertResponseContains('Preparar prévia'); $this->assertResponseContains('id="bulk-services"');
@@ -545,7 +546,7 @@ class EtapaDoisTest extends TestCase
         $sector->area_totvs=null; $sector->filial_totvs=null; $table->saveOrFail($sector);
         $this->get('/apontamentos/ordens?q=005523'); $this->assertResponseOk();
         $data=json_decode((string)$this->_response->getBody(),true);
-        $this->assertSame([],$data['results']); $this->assertStringContainsString('Configure Área TOTVS',$data['message']);
+        $this->assertSame([],$data['results']); $this->assertStringContainsString('identificação das equipes autorizadas',$data['message']);
     }
     public function testDirectOrderRejectsForeignAreaBranchAndClosedSource(): void
     {

@@ -1,20 +1,21 @@
-<?php $this->assign('title','Lançar porcentagem');$pcm=in_array($currentUser->perfil,['ADMIN_PCM','PCM'],true); ?>
-<div class="page-heading"><h1>Lançar evolução da O.S.</h1><?php if($pcm): ?><?= $this->Html->link('Lançamento em lote',['controller'=>'Evolucao','action'=>'index'],['class'=>'btn btn-outline-secondary']) ?><?php endif; ?></div>
-<section class="panel form-panel mt-3">
-<?= $this->Form->create(null,['id'=>'porcentagem-rapida','data-initial'=>json_encode($selectedOrder,JSON_THROW_ON_ERROR)]) ?>
-<?= $this->element('order_autocomplete',['quickOrder'=>true,'progressOrder'=>true]) ?>
-<p>Último percentual acumulado: <strong id="rapida-ultimo"><?= h($selectedOrder['percentual']??0) ?>%</strong></p>
-<?= $this->Form->hidden('chave',['value'=>$key]) ?><?= $this->Form->hidden('revisao',['id'=>'rapida-revisao','value'=>$selectedOrder['revisao']??'']) ?>
-<?= $this->Form->hidden('referencia',['id'=>'rapida-referencia','value'=>$selectedOrder['referencia']??'']) ?>
-<p class="small text-secondary">Referência semanal automática: <span id="rapida-semana"><?= h($reference??'Selecione a O.S.') ?></span> (São Paulo)</p>
-<?= $this->Form->control('percentual',['id'=>'rapida-percentual','type'=>'number','label'=>'Quanto do serviço está concluído agora? (%)','min'=>0,'max'=>100,'step'=>'0.01','class'=>'form-control','required'=>true,'data-anterior'=>$selectedOrder['anterior']??0]) ?>
-<small>Digite o total acumulado. Pode repetir o valor anterior para confirmar sem avanço. Não é obrigatório atualizar todas as O.S.</small>
-<p id="rapida-avanco" class="mt-2" role="status">Avanço calculado: —</p>
-<?php if($pcm): ?><details class="my-3"><summary>Correção ou referência retroativa (PCM)</summary>
-<p>Selecione uma O.S. para acessar seu calendário.</p>
-<label for="rapida-retroativa">Referência retroativa autorizada</label><select id="rapida-retroativa" class="form-select" data-url="<?= h($this->Url->build(['action'=>'porcentagem'])) ?>"><option value="">Referência automática</option></select>
-<?php if($selectedOrder): ?><a class="btn btn-outline-secondary" href="<?= h($this->Url->build(['controller'=>'Evolucao','action'=>'index','?'=>['entressafra_id'=>$selectedOrder['entressafra_id'],'os'=>$selectedOrder['numero']]])) ?>">Abrir calendário e retificações em lote</a><?php endif; ?>
-<?= $this->Form->control('motivo',['label'=>'Justificativa da retificação','class'=>'form-control','maxlength'=>3000]) ?></details><?php endif; ?>
-<?= $this->Form->button('Salvar porcentagem',['class'=>'btn btn-primary mt-3']) ?><?= $this->Form->end() ?>
-<p id="rapida-historico" class="mt-3" hidden><a id="rapida-historico-link" data-template="<?= h($this->Url->build(['controller'=>'Evolucao','action'=>'historico',1])) ?>">Histórico desta O.S.</a></p>
-</section><?= $this->Html->script('porcentagem-rapida.js?v='.filemtime(WWW_ROOT.'js/porcentagem-rapida.js'),['block'=>true]) ?>
+<?php $this->assign('title','Lançar porcentagem'); ?>
+<?= $this->Html->css('porcentagens-lote.css?v='.filemtime(WWW_ROOT.'css/porcentagens-lote.css'),['block'=>true]) ?>
+<div class="page-heading"><h1>Lançar evolução das O.S.</h1></div>
+<section class="panel" id="porcentagens-lote" data-storage="pcm-percentuais-u<?= h($currentUser->id) ?>-p<?= h($season) ?>-a<?= h($area) ?>" data-reference="<?= h($batch['reference']) ?>">
+<?= $this->Form->create(null,['type'=>'get','id'=>'porcentagens-filtros','class'=>'row g-3 mb-3']) ?>
+<div class="col-md-6"><?= $this->Form->control('area_id',['label'=>'Setor da Curva S','options'=>$batch['areas'],'empty'=>'Selecione o setor','value'=>$area,'class'=>'form-select']) ?></div>
+<div class="col-md-6"><?= $this->Form->control('os',['label'=>'Pesquisar O.S.','value'=>$search,'placeholder'=>'Número da O.S.','maxlength'=>6,'class'=>'form-control','inputmode'=>'numeric']) ?></div>
+<?= $this->Form->end() ?>
+<?php if($area): ?>
+<p><?= h($batch['total']) ?> O.S. · <span id="porcentagens-pendentes" role="status">Nenhuma alteração pendente.</span></p>
+<p id="porcentagens-erro" role="alert"></p>
+<?= $this->Form->create(null,['id'=>'porcentagens-form','data-key'=>$key,'data-pending'=>json_encode($pending,JSON_THROW_ON_ERROR)]) ?>
+<?= $this->Form->hidden('chave',['id'=>'porcentagens-chave','value'=>$key]) ?><?= $this->Form->hidden('alteracoes_json',['id'=>'porcentagens-json','value'=>'[]']) ?>
+<div class="table-responsive"><table class="table table-sm align-middle"><thead><tr><th>O.S.</th><th>Descrição da atividade</th><th>Bem / equipamento</th><th>Concluído (%)</th></tr></thead><tbody>
+<?php foreach($batch['rows'] as $row): ?><tr><td><?= h($row['numero']) ?></td><td><?php if(mb_strlen($row['descricao'])>160): ?><details><summary><?= h(mb_substr($row['descricao'],0,160)) ?>…</summary><div style="white-space:pre-line"><?= h($row['descricao']) ?></div></details><?php else: ?><?= h($row['descricao']) ?><?php endif; ?></td><td><?= h($row['bem']) ?></td><td><input type="number" class="form-control" style="min-width:110px;max-width:160px" min="0" max="100" step="0.01" value="<?= h($row['percentual']) ?>" aria-label="Percentual total da O.S. <?= h($row['numero']) ?>" title="Último valor salvo: <?= h($row['percentual']) ?>%" data-percentage data-id="<?= h($row['id']) ?>" data-base="<?= h($row['percentual']) ?>" data-revision="<?= h($row['revisao']) ?>"></td></tr><?php endforeach; ?>
+<?php if(!$batch['rows']): ?><tr><td colspan="4">Nenhuma O.S. vinculada neste resultado.</td></tr><?php endif; ?></tbody></table></div>
+<nav class="d-flex gap-3 my-3" aria-label="Paginação de porcentagens"><span>Página <?= h($batch['page']) ?> de <?= h($batch['pages']) ?></span><?php foreach(['Anterior'=>$batch['page']-1,'Próxima'=>$batch['page']+1] as $label=>$number): ?><?php if($number>=1&&$number<=$batch['pages']): ?><?= $this->Html->link($label,['controller'=>'Operacional','action'=>'porcentagem','?'=>['area_id'=>$area,'os'=>$search,'pagina'=>$number]],['data-batch-page'=>true]) ?><?php endif; ?><?php endforeach; ?></nav>
+<?= $this->Form->button('SALVAR PORCENTAGENS',['id'=>'porcentagens-salvar','class'=>'btn btn-primary','disabled'=>true]) ?><?= $this->Form->end() ?>
+<noscript>Ative o JavaScript para manter alterações entre páginas e salvar o lote.</noscript>
+<?php endif; ?></section>
+<?= $this->Html->script('porcentagens-lote.js?v='.filemtime(WWW_ROOT.'js/porcentagens-lote.js'),['block'=>true]) ?>

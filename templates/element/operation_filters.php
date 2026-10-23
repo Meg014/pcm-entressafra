@@ -1,5 +1,5 @@
 <?= $this->Form->create(null, ['type' => 'get', 'class' => 'row g-3 mb-4']) ?>
-<?php foreach (['entressafra_id' => ['Entressafra', $seasons], 'setor_id' => ['Setor', $sectors], 'caderno_id' => ['Caderno', $notebooks]] as $field => [$label,$options]): if($field==='entressafra_id'&&isset($periodoSelecionado))continue; ?>
+<?php foreach (['entressafra_id' => ['Entressafra', $seasons], 'setor_id' => ['Equipe executante', $sectors], 'caderno_id' => ['Caderno', $notebooks]] as $field => [$label,$options]): if($field==='entressafra_id'&&isset($periodoSelecionado))continue; ?>
 <div class="col-md-4"><?= $this->Form->control($field, ['label' => $label, 'options' => $options, 'empty' => 'Todos', 'class' => 'form-select', 'value' => $this->request->getQuery($field)]) ?></div>
 <?php endforeach; ?>
 <div class="col-md-4"><?= $this->Form->control('os', ['label' => 'Número da O.S.', 'class' => 'form-control', 'value' => $this->request->getQuery('os')]) ?></div>

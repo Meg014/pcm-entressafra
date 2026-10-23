@@ -13,9 +13,12 @@ $folder=dirname(__DIR__).'/backups/reinicializacao_'.$tag;if(!mkdir($folder,0700
 $archive=$folder.'/pcm_controle_entressafra_'.$tag.'.dump';
 $environment=getenv();$environment['PGPASSWORD']=(string)$config['password'];$environment['PGCONNECT_TIMEOUT']='10';
 $run=function(array $arguments,string $label,array $env)use($folder): string{
-    $process=proc_open($arguments,[0=>['pipe','r'],1=>['pipe','w'],2=>['file',$folder.'/'.$label.'.log','a']],$pipes,null,$env,['bypass_shell'=>true,'create_no_window'=>true]);
+    // File handles prevent the detached PostgreSQL server from keeping a pipe
+    // open after pg_ctl exits on Windows.
+    $stdout=$folder.'/'.$label.'.stdout.log';
+    $process=proc_open($arguments,[0=>['pipe','r'],1=>['file',$stdout,'a'],2=>['file',$folder.'/'.$label.'.log','a']],$pipes,null,$env,['bypass_shell'=>true,'create_no_window'=>true]);
     if(!is_resource($process))throw new RuntimeException('Falha ao iniciar '.$label);
-    fclose($pipes[0]);$out=stream_get_contents($pipes[1]);fclose($pipes[1]);$status=proc_close($process);
+    fclose($pipes[0]);$status=proc_close($process);$out=file_get_contents($stdout);
     if($status!==0)throw new RuntimeException('Falha em '.$label.'. Backup não aprovado; limpeza proibida. Consulte o log local.');
     return $out;
 };
@@ -33,6 +36,7 @@ try{
     $manifest['administradores']=$db->execute("SELECT id,nome,login,perfil,ativo FROM usuarios WHERE perfil='ADMIN_PCM' ORDER BY id")->fetchAll('assoc');
     $manifest['auditorias_remocao_necessaria']=(int)$db->execute('SELECT COUNT(*) AS n FROM auditorias WHERE apontamento_id IS NOT NULL')->fetch('assoc')['n'];
     $manifest['restricoes']=$db->execute("SELECT conrelid::regclass::text AS tabela,conname AS nome,pg_get_constraintdef(oid) AS definicao FROM pg_constraint WHERE connamespace='public'::regnamespace ORDER BY 1,2")->fetchAll('assoc');
+    usort($manifest['restricoes'],fn($a,$b)=>strcmp(json_encode($a),json_encode($b)));
     echo 'Origem confirmada; snapshot somente leitura. Gerando backup completo...',PHP_EOL;
     $connectionArgs=['--host',(string)$config['host'],'--port',(string)$config['port'],'--username',(string)$config['username']];
     $run(array_merge([$bin.'pg_dump.exe'],$connectionArgs,['--dbname','pcm_controle_entressafra','--format=custom','--snapshot',$snapshot,'--file',$archive]),'pg_dump',$environment);
@@ -50,10 +54,25 @@ try{
     $check=new \Cake\Database\Connection(['driver'=>\Cake\Database\Driver\Postgres::class,'host'=>'127.0.0.1','port'=>$port,'username'=>'restore_check','password'=>'','database'=>'pcm_restore_verificacao','encoding'=>'utf8','cacheMetadata'=>false]);
     if($fingerprint($check)!==$manifest['tabelas'])throw new RuntimeException('Restauração diverge das contagens/hashes da origem.');
     $constraints=$check->execute("SELECT conrelid::regclass::text AS tabela,conname AS nome,pg_get_constraintdef(oid) AS definicao FROM pg_constraint WHERE connamespace='public'::regnamespace ORDER BY 1,2")->fetchAll('assoc');
-    if($constraints!==$manifest['restricoes'])throw new RuntimeException('Restrições restauradas divergentes.');
+    usort($constraints,fn($a,$b)=>strcmp(json_encode($a),json_encode($b)));
+    // PostgreSQL can distribute an array cast onto its literal elements when
+    // replaying a CHECK. Accept only that precise, equivalent rewrite.
+    foreach($constraints as &$restored){
+        foreach($manifest['restricoes'] as $original){
+            if($restored['tabela']!==$original['tabela']||$restored['nome']!==$original['nome'])continue;
+            if(preg_match('/^CHECK \(\(\((\w+)\)::text = ANY \(\(ARRAY\[(.*)\]\)::text\[\]\)\)\)$/D',$original['definicao'],$match)){
+                $values=explode(', ',$match[2]);$valid=true;
+                foreach($values as $value)if(!preg_match("/^'[A-Za-z_]+'::character varying$/D",$value))$valid=false;
+                $equivalent='CHECK ((('.$match[1].')::text = ANY (ARRAY['.implode(', ',array_map(fn($v)=>'('.$v.')::text',$values)).'])))';
+                if($valid&&$restored['definicao']===$equivalent)$restored['definicao']=$original['definicao'];
+            }
+        }
+    }unset($restored);
+    usort($constraints,fn($a,$b)=>strcmp(json_encode($a),json_encode($b)));
+    if($constraints!==$manifest['restricoes']){file_put_contents($folder.'/restricoes_restauradas.json',json_encode($constraints,JSON_PRETTY_PRINT));throw new RuntimeException('Restrições restauradas divergentes.');}
     $adminHashes=$db->execute("SELECT id,senha_hash FROM usuarios WHERE perfil='ADMIN_PCM' ORDER BY id")->fetchAll('assoc');
     if($adminHashes!==$check->execute("SELECT id,senha_hash FROM usuarios WHERE perfil='ADMIN_PCM' ORDER BY id")->fetchAll('assoc'))throw new RuntimeException('Credenciais administrativas divergentes.');
-    $check->disconnect();
+    $check->getDriver()->disconnect();
     if($fingerprint($db)!==$manifest['tabelas'])throw new RuntimeException('Origem mudou durante a validação; atualizar inventário antes da limpeza.');
     $manifest['status']='BACKUP_RESTAURADO_E_VALIDADO_SEM_LIMPEZA';
     $manifest['validacao']=['tabelas'=>count($tables),'dados_hashes'=>true,'restricoes'=>count($constraints),'credenciais_admin_preservadas'=>true,'instancia'=>'127.0.0.1:'.$port,'origem_inalterada'=>true];

@@ -11,7 +11,7 @@ abstract class OperacaoController extends AppController
     protected function options(): void
     {
         $ids = Access::sectors($this->currentUser) ?: [-1];
-        $this->set('sectors', $this->fetchTable('Setores')->find('list')->where(['id IN' => $ids])->orderBy(['nome' => 'ASC'])->all());
+        $this->set('sectors', \App\Service\OsApresentacao::options($this->fetchTable('Setores')->find('list')->where(['id IN' => $ids])->orderBy(['nome' => 'ASC'])->all()));
         $this->set('notebooks', $this->fetchTable('Cadernos')->find('list')->where(['Cadernos.id IN' => Access::notebookIds($ids)])->orderBy(['nome' => 'ASC'])->all());
         $this->set('seasons', $this->fetchTable('Entressafras')->find('list')->orderBy(['nome' => 'DESC'])->all());
     }

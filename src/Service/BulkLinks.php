@@ -127,7 +127,9 @@ final class BulkLinks
         $eligible=(clone $query)->where(['estado'=>'elegivel'])->count(); $rows=[];
         foreach ($query->orderBy(['numero'=>'ASC','id'=>'ASC'])->limit(10)->offset(($page-1)*10)->all() as $item) {
             $row=json_decode($item->snapshot,true,512,JSON_THROW_ON_ERROR);
-            $rows[]=['id'=>(string)$item->id,'estado'=>$item->estado,'selecionado'=>$item->selecionado,'motivo'=>$item->motivo,'caderno_atual'=>$item->caderno_atual,'os'=>$row];
+            $local=Access::table('Atividades')->find()->where(['entressafra_id'=>$filters['entressafra_id'],'os_numero'=>$row['numero'],'os_filial'=>$row['filial']])->first();
+            $presentation=$local?OsApresentacao::activity($local,$row):OsApresentacao::source($row);
+            $rows[]=['id'=>(string)$item->id,'estado'=>$item->estado,'selecionado'=>$item->selecionado,'motivo'=>OsApresentacao::texto((string)$item->motivo),'caderno_atual'=>$item->caderno_atual,'os'=>$row+$presentation];
         }
         $notebook=Access::table('Cadernos')->get($job->caderno_id);
         return ['token'=>$token,'estado'=>$job->estado,'contagens'=>$counts,'destino'=>$notebook->nome,'entressafra_nome'=>Access::table('Entressafras')->get($notebook->entressafra_id)->nome,'setor_nome'=>Access::table('Setores')->get($filters['setor_id'])->nome,'filtros'=>$filters,'rows'=>$rows,'pagina'=>$page,'paginas'=>$pages,'filtradas'=>$total,'elegiveis_filtradas'=>$eligible];

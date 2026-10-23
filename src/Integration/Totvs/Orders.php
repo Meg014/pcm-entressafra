@@ -26,6 +26,8 @@ final class Orders
     }
     public static function mapRow(array $row): array
     {
+        $description=trim((string)($row['descricao_totvs']??''));
+        $row['descricao_totvs']=mb_check_encoding($description,'UTF-8')?$description:mb_convert_encoding($description,'UTF-8','Windows-1252');
         foreach(['numero','filial','codigo_servico','codigo_area','centro_custo','data_origem','situacao','termino','bem'] as $field) { if(!array_key_exists($field,$row)) { throw new \DomainException('Resposta incompleta da O.S. no TOTVS.'); } $row[$field]=rtrim((string)$row[$field],' '); }
         $row['servico']=rtrim((string)($row['servico']??''),' ');
         $row['correspondencias_servico']=(int)($row['correspondencias_servico']??0);

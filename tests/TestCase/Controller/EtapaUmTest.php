@@ -15,6 +15,7 @@ class EtapaUmTest extends TestCase
         foreach (['EvolucaoPesos','EvolucaoMetas','EvolucaoRegistros','EvolucaoLotes','EvolucaoVersoes','CalendariosOperacionais','EvolucaoSemanas','VinculosItens', 'VinculosLotes', 'Auditorias', 'Apontamentos', 'Atividades', 'UsuariosSetores', 'Usuarios'] as $alias) { $this->getTableLocator()->get($alias)->deleteAll([]); }
         $this->getTableLocator()->get('Cadernos')->deleteAll([]);
         $this->getTableLocator()->get('Setores')->deleteAll([]);
+        $this->getTableLocator()->get('AreasFabrica')->deleteAll([]);
         $this->getTableLocator()->get('Entressafras')->deleteAll([]);
         $table = $this->getTableLocator()->get('Usuarios');
         $hash = password_hash('Teste-Local-Somente-2026', PASSWORD_DEFAULT);
@@ -42,7 +43,9 @@ class EtapaUmTest extends TestCase
         $this->post('/setores/add', ['nome' => 'Setor de teste', 'ativo' => '1']);
         $this->assertResponseCode(302);
         $setor = $this->getTableLocator()->get('Setores')->find()->firstOrFail();
-        $this->post('/cadernos/add', ['nome' => 'Caderno de teste', 'entressafra_id' => $entressafra->id, 'setor_id' => $setor->id, 'ativo' => '1']);
+        $this->post('/setores/nova-area',['nome'=>'Setor principal de teste']);$this->assertResponseCode(302);
+        $area=\App\Service\Access::table('AreasFabrica')->find()->firstOrFail();
+        $this->post('/cadernos/add', ['nome' => 'Caderno de teste', 'area_curva_id'=>$area->id]);
         $this->assertResponseCode(302);
         $caderno = $this->getTableLocator()->get('Cadernos')->find()->firstOrFail();
         foreach (['entressafras' => $entressafra->id, 'setores' => $setor->id, 'cadernos' => $caderno->id] as $path => $id) {
@@ -61,7 +64,7 @@ class EtapaUmTest extends TestCase
         $this->assertResponseOk();
         $this->assertResponseContains('Nome alterado entressafras');
         $this->assertResponseContains('Ativa');
-        $this->get('/cadernos?entressafra_id=' . $entressafra->id . '&setor_id=' . $setor->id);
+        $this->get('/cadernos?entressafra_id=' . $entressafra->id . '&area_curva_id=' . $area->id);
         $this->assertResponseOk();
         $this->assertResponseContains('Nome alterado cadernos');
     }

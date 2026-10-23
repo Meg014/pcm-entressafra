@@ -74,12 +74,12 @@ class EvolucaoTest extends TestCase
     }
     public function testPartialHttpBatchSavesOnlyFilledOrderAndUnupdatedCompletionIsInformative(): void
     {
-        $this->auth($this->responsible);$this->enableCsrfToken();
-        $this->post('/evolucao?entressafra_id='.$this->season.'&referencia=2026-09-07',['chave'=>bin2hex(random_bytes(16)),'alteracoes'=>[['atividade_id'=>$this->activities[0],'percentual'=>100,'revisao'=>0]]]);
+        $this->auth($this->admin);$this->enableCsrfToken();
+        $this->post('/evolucao/correcoes?entressafra_id='.$this->season.'&referencia=2026-09-07',['chave'=>bin2hex(random_bytes(16)),'alteracoes'=>[['atividade_id'=>$this->activities[0],'percentual'=>100,'revisao'=>0]]]);
         $this->assertRedirect();$this->assertSame(1,Access::table('EvolucaoRegistros')->find()->count());
         $report=$this->service->report($this->season,$this->service->activities($this->season),'2026-09-14');
         $this->assertSame(1,$report['counts']['concluidas']);$this->assertSame(1,$report['counts']['sem_inicio']);$this->assertSame(2,$report['counts']['pendentes']);
-        $this->get('/evolucao?entressafra_id='.$this->season.'&referencia=2026-09-14');$this->assertResponseOk();
+        $this->get('/evolucao/correcoes?entressafra_id='.$this->season.'&referencia=2026-09-14');$this->assertResponseOk();
         $this->assertResponseContains('Não é obrigatório atualizar todas as O.S. toda semana.');$this->assertResponseContains('Sem atualização na semana');
     }
     public function testRequestedAccumulatedSequenceCalculatesDifferencesWithoutSummingInputs(): void
@@ -186,7 +186,7 @@ class EvolucaoTest extends TestCase
     }
     public function testRoutesAllRolesAndSectorHistoryAuthorization(): void
     {
-        foreach([$this->admin,$this->pcm,$this->responsible] as $id){$this->auth($id);$this->get('/evolucao?entressafra_id='.$this->season);$this->assertResponseOk();$this->assertResponseContains('Salvar alterações em lote');
+        foreach([$this->admin,$this->pcm,$this->responsible] as $id){$this->auth($id);$this->get('/lancar-porcentagem?entressafra_id='.$this->season);$this->assertResponseOk();$this->assertResponseContains('Setor da Curva S');
             foreach(['/evolucao/configuracao','/controle-pcm'] as $url){$this->get($url.'?entressafra_id='.$this->season);$this->assertResponseCode($id===$this->responsible?403:200);}}
         $this->auth($this->responsible);$this->get('/evolucao/historico/'.$this->activities[1]);$this->assertResponseCode(403);
         $this->get('/evolucao/historico/'.$this->activities[0]);$this->assertResponseOk();
@@ -194,7 +194,7 @@ class EvolucaoTest extends TestCase
     }
     public function testHttpBulkSaveAndCsrfProtection(): void
     {
-        $this->auth($this->responsible);$url='/evolucao?entressafra_id='.$this->season.'&referencia=2026-09-07';
+        $this->auth($this->admin);$url='/evolucao/correcoes?entressafra_id='.$this->season.'&referencia=2026-09-07';
         $data=['chave'=>bin2hex(random_bytes(16)),'alteracoes'=>[['atividade_id'=>$this->activities[0],'percentual'=>10,'revisao'=>0]]];
         $this->post($url,$data);$this->assertResponseCode(403);
         $this->enableCsrfToken();$this->post($url,$data);$this->assertRedirect();$this->assertSame(10.0,$this->service->state($this->activities[0],'2026-09-07')['percentual']);

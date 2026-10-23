@@ -9,7 +9,7 @@ class SetoresController extends CadastrosController
     {
         if($this->request->getQuery('equipes')||$this->currentUser->perfil==='RESPONSAVEL_SETOR'){parent::index();return;}
         \App\Service\Access::pcm($this->currentUser);
-        $areas=$this->paginate($this->fetchTable('AreasFabrica')->find()->orderBy(['nome'=>'ASC']),['limit'=>10,'maxLimit'=>10]);
+        $areas=$this->paginate((new \App\Service\SetoresApresentacao())->availableAreas((int)\App\Service\PeriodoContexto::id())->orderBy(['nome'=>'ASC']),['limit'=>10,'maxLimit'=>10]);
         $season=(int)\App\Service\PeriodoContexto::id();$service=new \App\Service\SetoresApresentacao();$configurations=[];
         foreach($areas as $area)$configurations[$area->id]=$service->configuration($season,(int)$area->id);
         $this->set(compact('areas','season','configurations'));$this->viewBuilder()->setTemplatePath('Setores');
@@ -27,7 +27,7 @@ class SetoresController extends CadastrosController
     public function novaArea()
     {
         $this->request->allowMethod(['post']);\App\Service\Access::pcm($this->currentUser);$name=trim((string)$this->request->getData('nome'));
-        if($name===''||mb_strlen($name)>150||$this->fetchTable('AreasFabrica')->exists(['nome'=>$name])){$this->Flash->error('Informe um nome único de até 150 caracteres.');return $this->redirect(['action'=>'index']);}
-        $t=$this->fetchTable('AreasFabrica');$a=$t->saveOrFail(\App\Service\Access::entity($t,['nome'=>$name]));\App\Service\Access::audit($this->currentUser,'area_apresentacao_criada',null,null,$a->toArray(),'Cadastro do setor de apresentação.');return $this->redirect(['action'=>'curva',$a->id]);
+        if($name===''||mb_strlen($name)>150||$this->fetchTable('AreasFabrica')->exists(['nome'=>$name,'entressafra_id'=>(int)\App\Service\PeriodoContexto::id()])){$this->Flash->error('Informe um nome único de até 150 caracteres.');return $this->redirect(['action'=>'index']);}
+        $t=$this->fetchTable('AreasFabrica');$a=$t->saveOrFail(\App\Service\Access::entity($t,['nome'=>$name,'entressafra_id'=>(int)\App\Service\PeriodoContexto::id()]));\App\Service\Access::audit($this->currentUser,'area_apresentacao_criada',null,null,$a->toArray(),'Cadastro do setor de apresentação.');return $this->redirect(['action'=>'curva',$a->id]);
     }
 }

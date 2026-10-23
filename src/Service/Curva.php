@@ -28,7 +28,7 @@ final class Curva
     }
     private function position(string $where,array $params,string $reference,bool $details=false,int $page=1): array
     {
-        $fields=$details?"a.os_numero,a.servico,a.bem,s.nome AS equipe,c.nome AS caderno,a.descricao_atividade,a.descricao_origem,ar.nome AS area_curva,":"";
+        $fields=$details?"a.os_numero,a.servico,a.bem,s.nome AS equipe,c.nome AS caderno,a.descricao_atividade,a.descricao_origem,a.snapshot_totvs,ar.nome AS area_curva,":"";
         $sql='WITH latest AS (SELECT r.atividade_id,r.percentual,r.created,w.referencia,ROW_NUMBER() OVER (PARTITION BY r.atividade_id ORDER BY w.referencia DESC,r.revisao DESC,r.id DESC) AS rn FROM evolucao_registros r JOIN evolucao_semanas w ON w.id=r.semana_id WHERE w.referencia<=?) '.
             'SELECT '.$fields.'a.id,a.entressafra_id,a.area_fabrica_id,a.setor_executante_id,COALESCE(a.area_curva_id,c.area_curva_id) AS area_curva_id,COALESCE(l.percentual,0) AS percentual,l.created AS ultima_atualizacao,l.referencia AS ultima_referencia FROM atividades a LEFT JOIN cadernos c ON c.id=a.caderno_id LEFT JOIN setores s ON s.id=a.setor_executante_id LEFT JOIN areas_fabrica ar ON ar.id=COALESCE(a.area_curva_id,c.area_curva_id) LEFT JOIN latest l ON l.atividade_id=a.id AND l.rn=1 WHERE '.$where.' ORDER BY a.os_numero,a.id';
         if($details)$sql.=' LIMIT 10 OFFSET '.((max(1,$page)-1)*10);

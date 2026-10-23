@@ -50,6 +50,63 @@ class CurvaReorganizacaoTest extends TestCase
     {$s=new ClassificacaoCurva();$s->apply($this->admin,$s->preview($this->admin,$this->season,'caderno',[$book],$area,'Conferência administrativa do caderno.'));$this->assertSame($area,(int)Access::table('Cadernos')->getConnection()->execute('SELECT area_curva_id FROM cadernos WHERE id=?',[$book])->fetch('assoc')['area_curva_id']);}
     public function testInputPreservesZerosAndDeduplicatesOnlyInput(): void
     {$r=ListLinks::parse("005587\n005569,005587;005579 005583");$this->assertSame(5,$r['informadas']);$this->assertSame(4,$r['unicas']);$this->assertSame(1,$r['repetidas']);$this->assertSame(['005587','005569','005579','005583'],$r['numbers']);}
+    public function testCompletedListReturnsToListingOnlyWithoutPendingResults(): void
+    {
+        $this->get('/cadernos?q=MOENDA');$this->assertResponseOk();
+        $this->assertSession('MOENDA','Cadernos.retorno.query.q');$this->session(['Cadernos'=>$_SESSION['Cadernos']]);
+        $this->sourceRows=[$this->row(1)];$service=new ListLinks($this->source());
+        $token=$this->preview($service,'000001');$service->confirmEligible($this->admin,$token);
+        $url='/cadernos/'.$this->books[0].'/vincular-lista?token='.$token;
+        $this->get($url);$this->assertResponseOk();$this->assertResponseContains('data-auto-process="1"');
+        $this->finish($service,$token);
+        $this->get($url);$this->assertRedirect(['controller'=>'Cadernos','action'=>'index','?'=>['q'=>'MOENDA']]);
+        $this->session(['Flash'=>$_SESSION['Flash']]);
+        $this->get('/cadernos?q=MOENDA');$this->assertResponseOk();$this->assertResponseContains('1 O.S. vinculada(s)');
+        $other=$this->preview($service,'000001 000002');
+        // Fixture: the successful part finished but the missing OS still needs review.
+        $job=$service->job($this->admin,$other);$job->estado='concluido';Access::table('VinculosLotes')->saveOrFail($job);
+        $url='/cadernos/'.$this->books[0].'/vincular-lista?token='.$other;
+        $this->get($url);$this->assertResponseOk();$this->assertResponseContains('pendência(s) para revisão');$this->assertResponseContains('000002');$this->assertResponseContains('Voltar à listagem de Cadernos');
+        $this->get($url);$this->assertResponseOk();$this->assertSame(1,Access::table('Atividades')->find()->count());
+    }
+    public function testSingleConfirmationLinksAllEligibleAcrossPagesAndLeavesConflictsUntouched(): void
+    {
+        for($i=1;$i<=45;$i++)$this->sourceRows[]=$this->row($i);
+        $this->sourceRows[3]['termino']='S';
+        $other=$this->local(2,$this->books[1]);$same=$this->local(3,$this->books[0]);
+        $service=new ListLinks($this->source());$token=$this->preview($service,implode(' ',array_column($this->sourceRows,'numero')).' 000001 000046');
+        $url='/cadernos/'.$this->books[0].'/vincular-lista?token='.$token;
+        $this->get($url);$this->assertResponseOk();
+        $dom=new \DOMDocument();@$dom->loadHTML((string)$this->_response->getBody());$xp=new \DOMXPath($dom);
+        $this->assertSame(0,$xp->query('//input[@type="checkbox"]|//input[@name="quantidade"]|//input[@name="justificativa"]|//select')->length);
+        $this->assertSame(1,$xp->query('//form[.//input[@name="acao" and @value="confirmar"]]')->length);
+        $this->assertResponseContains('Confirmar vínculos');$this->assertResponseContains('/transferir-os');
+        $this->assertSame(2,Access::table('Atividades')->find()->count());
+        // A stale administrative transfer selection cannot enter initial linking.
+        $conflict=Access::table('VinculosItens')->find()->where(['numero'=>'000002'])->firstOrFail();
+        $service->select($this->admin,$token,[$conflict->id],false,true);
+        $this->enableCsrfToken();$this->post($url,['acao'=>'confirmar']);$this->assertRedirect();
+        $summary=$service->summary($this->admin,$token);
+        $this->assertSame('processando',$summary['job']->estado);$this->assertSame(42,$summary['counts']['selecionadas']);
+        $this->assertFalse((bool)Access::table('VinculosItens')->get($conflict->id)->selecionado);
+        $this->post($url,['acao'=>'confirmar']);$this->assertRedirect(); // double click
+        $this->finish($service,$token);
+        $this->assertSame(44,Access::table('Atividades')->find()->count());
+        $this->assertSame($this->books[1],(int)Access::table('Atividades')->get($other)->caderno_id);
+        $this->assertSame($this->books[0],(int)Access::table('Atividades')->get($same)->caderno_id);
+        $this->assertSame(1,Access::table('Auditorias')->find()->where(['acao'=>'lista_os_confirmada'])->count());
+        $this->assertSame(42,$service->summary($this->admin,$token)['counts']['sucesso']);
+    }
+    public function testSimpleLinkCannotSkipPreviewOrSelectTransfersThroughLegacyPosts(): void
+    {
+        $service=new ListLinks($this->source());$token=$service->create($this->admin,$this->books[0],'000001');
+        $url='/cadernos/'.$this->books[0].'/vincular-lista?token='.$token;$this->enableCsrfToken();
+        $this->post($url,['acao'=>'confirmar']);$this->assertResponseOk();$this->assertSame('preparando',$service->job($this->admin,$token)->estado);
+        $this->post($url,['acao'=>'selecionar','transferir'=>'1','ids'=>[1]]);$this->assertResponseOk();
+        $this->assertSame(0,Access::table('Atividades')->find()->count());
+        $this->get('/cadernos/'.$this->books[0].'/transferir-os?token='.$token);$this->assertResponseOk();$this->assertResponseContains('Transferência administrativa');
+        $this->auth($this->computer);$this->get('/cadernos/'.$this->books[0].'/transferir-os?token='.$token);$this->assertResponseCode(403);
+    }
     public function testRealRenderedPaginationAndContinuationPreserveNotebookTokenAndPeriod(): void
     {
         foreach([1,10,45,105] as $size){
@@ -169,10 +226,9 @@ class CurvaReorganizacaoTest extends TestCase
     public function testQuickProgressTenToEightyUsesConfirmedIdAndPreservesSameWeekRevisions(): void
     {
         $id=$this->local(5300);$this->progress($id,10,user:$this->computer);$this->auth($this->computer);$this->enableCsrfToken();
-        $this->post('/lancar-porcentagem',['atividade_id'=>$id,'referencia'=>'2026-10-19','revisao'=>1,'percentual'=>80,'chave'=>bin2hex(random_bytes(16))]);$this->assertRedirect('/lancar-porcentagem');
-        $state=(new Evolucao())->state($id,'2026-10-19');$this->assertSame(80.0,$state['percentual']);$this->assertCount(2,(new Evolucao())->history($id));
-        $this->post('/lancar-porcentagem',['atividade_id'=>$id,'referencia'=>'2026-10-19','revisao'=>1,'percentual'=>90,'chave'=>bin2hex(random_bytes(16))]);$this->assertResponseOk();$this->assertResponseContains('Outra pessoa alterou');
-        $this->assertSame(80.0,(new Evolucao())->state($id,'2026-10-19')['percentual']);
+        $this->post('/lancar-porcentagem',['atividade_id'=>$id,'referencia'=>'2026-10-19','revisao'=>1,'percentual'=>80,'chave'=>bin2hex(random_bytes(16))]);$this->assertResponseOk();$this->assertResponseContains('lançamento individual foi encerrado');
+        $this->assertSame(10.0,(new Evolucao())->state($id,'2026-10-19')['percentual']);$this->assertCount(1,(new Evolucao())->history($id));
+        $this->get('/lancar-porcentagem');$this->assertResponseOk();$this->assertResponseNotContains('id="os-pesquisa"');
     }
     public function testCurveAndHistoryUseTenRecordsPerBackendPage(): void
     {
@@ -206,7 +262,7 @@ class CurvaReorganizacaoTest extends TestCase
     }
     public function testAdministrativePagesAreAvailableAndPostsRequireCsrf(): void
     {
-        foreach(['/organizacao-curva?entressafra_id='.$this->season.'&caderno_id='.$this->books[0],'/cadernos/view/'.$this->books[0],'/cadernos/'.$this->books[0].'/vincular-lista'] as $path){$this->get($path);$this->assertResponseOk();$this->assertResponseContains('Vincular O.S. por lista');}
+        foreach(['/organizacao-curva?entressafra_id='.$this->season.'&caderno_id='.$this->books[0],'/cadernos/view/'.$this->books[0],'/cadernos/'.$this->books[0].'/vincular-lista'] as $path){$this->get($path);$this->assertResponseOk();$this->assertResponseContains('Vincular O.S.');}
         $this->post('/organizacao-curva',['tipo'=>'caderno','area_curva_id'=>$this->areas[0]]);$this->assertResponseCode(403);
     }
     public function testPartialWeightPagePreservesOtherValuesAndFrozenVersions(): void

@@ -86,14 +86,14 @@ class CalendariosOrdensTest extends TestCase
         $this->assertSame(0,Access::table('EvolucaoSemanas')->find()->count());
         $this->assertSame(0,Access::table('EvolucaoRegistros')->find()->count());
     }
-    public function testQuickProgressPostCreatesWeekWithoutCalendarConfirmation(): void {
+    public function testQuickProgressPostCreatesWeekWithoutCalendarConfirmation(): void
+    {
         Access::table('EvolucaoSemanas')->deleteAll([]);
-        $this->auth($this->computer);$this->enableCsrfToken();
-        $reference=(new OperacaoRapida())->reference($this->season)[0];
-        $this->post('/lancar-porcentagem',['atividade_id'=>$this->activities[0],'chave'=>bin2hex(random_bytes(16)),'percentual'=>25,'revisao'=>0,'referencia'=>$reference]);
-        $this->assertRedirect('/lancar-porcentagem');
-        $this->assertSame(25.0,(new Evolucao())->state($this->activities[0],$reference)['percentual']);
-        $this->assertSame(1,Access::table('EvolucaoSemanas')->find()->count());
+        $t=Access::table('AreasFabrica');$area=$t->saveOrFail(Access::entity($t,['nome'=>'MOENDA','entressafra_id'=>$this->season]));
+        $book=Access::table('Atividades')->get($this->activities[0])->caderno_id;Access::table('Cadernos')->updateAll(['area_curva_id'=>$area->id],['id'=>$book]);
+        $this->auth($this->computer);$this->enableCsrfToken();$reference=(new OperacaoRapida())->reference($this->season)[0];
+        $this->post('/lancar-porcentagem?area_id='.$area->id,['chave'=>bin2hex(random_bytes(16)),'alteracoes_json'=>json_encode([['atividade_id'=>$this->activities[0],'percentual'=>25,'base'=>0,'revisao'=>0,'referencia'=>$reference]])]);
+        $this->assertRedirect();$this->assertSame(25.0,(new Evolucao())->state($this->activities[0],$reference)['percentual']);$this->assertSame(1,Access::table('EvolucaoSemanas')->find()->count());
     }
     public function testAutomaticIdentityWithoutNotebookCanReceiveHoursAndProgress(): void {
         $s=new Activities(new FakeTotvs());$id=$s->identify($this->computer,'nova-os');$a=Access::table('Atividades')->get($id);
@@ -104,7 +104,7 @@ class CalendariosOrdensTest extends TestCase
         $ref=(new OperacaoRapida())->reference($this->season)[0];(new Evolucao())->saveBatch($this->computer,$this->season,$ref,[['atividade_id'=>$id,'percentual'=>30,'revisao'=>0]],bin2hex(random_bytes(16)));
         $this->assertSame(30.0,(new Evolucao())->state($id,$ref)['percentual']);
         $this->assertCount(3,(new Evolucao())->activities($this->season));
-        $this->auth($this->admin);foreach(['/atividades','/atividades/view/'.$id,'/apontamentos','/evolucao?entressafra_id='.$this->season] as $path){$this->get($path);$this->assertResponseOk();}
+        $this->auth($this->admin);foreach(['/atividades','/atividades/view/'.$id,'/apontamentos','/lancar-porcentagem?entressafra_id='.$this->season] as $path){$this->get($path);$this->assertResponseOk();}
     }
     public function testLaterBookClassificationNeverTransfersExistingLinkOrLosesHistory(): void {
         $id=(new Activities(new FakeTotvs()))->identify($this->admin,'nova-os');$book=Access::table('Atividades')->get($this->activities[0])->caderno_id;

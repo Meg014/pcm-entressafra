@@ -30,6 +30,7 @@ final class Access
     public static function notebook($user,int $id): void
     {
         PeriodoContexto::notebook($id);
+        if(in_array($user->perfil,['ADMIN_PCM','PCM'],true))return;
         if (!array_intersect(self::notebookSectors($id),self::sectors($user))) { throw new ForbiddenException('Caderno sem setor autorizado para este usuário.'); }
     }
     public static function activity($user,$activity): void

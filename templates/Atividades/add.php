@@ -9,7 +9,7 @@
 <p class="small text-secondary">Somente L / término N, origem em 2026 e serviço contendo ENTRESSAFRA, incluindo códigos antigos e atuais.</p>
 <?= $this->Form->button('Pesquisar no TOTVS', ['name' => 'acao', 'value' => 'pesquisar', 'class' => 'btn btn-outline-primary', 'formnovalidate' => true]) ?>
 <?php if ($matches): ?>
-<div class="my-4"><?php $choices = []; foreach ($matches as $item) { $choices[$item['chave']] = $item['numero'] . ' · Filial ' . $item['filial'] . ' · Área executante ' . $item['codigo_area'] . ' · ' . $item['servico'] . ' · ' . $item['bem']; } ?><?= $this->Form->control('os_chave', ['label' => 'O.S. encontrada', 'options' => $choices, 'empty' => 'Selecione', 'class' => 'form-select']) ?></div>
+<div class="my-4"><?php $choices = []; foreach ($matches as $item) { $choices[$item['chave']] = 'O.S. '.$item['numero'].' · Descrição: '.\App\Service\OsApresentacao::description(null,$item).' · Equipe executante: '.\App\Service\OsApresentacao::equipe($item['codigo_area']); } ?><?= $this->Form->control('os_chave', ['label' => 'O.S. encontrada', 'options' => $choices, 'empty' => 'Selecione', 'class' => 'form-select']) ?></div>
 <?= $this->Form->button('Vincular ao caderno', ['name' => 'acao', 'value' => 'vincular', 'class' => 'btn btn-primary']) ?>
 <?php else: ?><p class="text-secondary mt-3 mb-0">Pesquise para selecionar uma O.S. Não é permitido digitar dados cadastrais manualmente.</p><?php endif; ?>
 <?= $this->Form->end() ?></section>

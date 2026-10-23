@@ -38,7 +38,12 @@ abstract class CadastrosController extends AppController
             $query->where([$this->cadastro . '.nome LIKE' => '%' . trim($search) . '%']);
         }
         if ($this->cadastro === 'Cadernos') {
-            $query->contain(['Entressafras', 'Setores']);
+            $query->contain(['Entressafras', 'Setores','SetorPrincipal']);
+            $principal=$this->request->getQuery('area_curva_id');
+            if($principal!==null&&$principal!==''){
+                if(!is_scalar($principal)||!ctype_digit((string)$principal)||(int)$principal<1)throw new BadRequestException('Setor principal inválido.');
+                $query->where(['Cadernos.area_curva_id'=>(int)$principal]);
+            }
             if ($this->currentUser->perfil==='RESPONSAVEL_SETOR') { $query->contain(['Setores'=>fn($q)=>$q->where(['Setores.id IN'=>\App\Service\Access::sectors($this->currentUser)?:[-1]])]); }
             foreach (['entressafra_id', 'setor_id'] as $field) {
                 $id = $this->request->getQuery($field);
@@ -109,7 +114,7 @@ abstract class CadastrosController extends AppController
     {
         if ($this->cadastro === 'Cadernos') {
             $this->set('entressafras', $this->fetchTable('Entressafras')->find('list')->orderBy(['nome' => 'DESC'])->all());
-            $this->set('setores', $this->fetchTable('Setores')->find('list')->where(['id IN' => \App\Service\Access::sectors($this->currentUser) ?: [-1]])->orderBy(['nome' => 'ASC'])->all());
+            $this->set('setores', \App\Service\OsApresentacao::options($this->fetchTable('Setores')->find('list')->where(['id IN' => \App\Service\Access::sectors($this->currentUser) ?: [-1]])->orderBy(['nome' => 'ASC'])->all()));
         }
     }
 }

@@ -23,7 +23,7 @@
     data.filtros.servicos.forEach(code => { const option = document.createElement('option'); option.value = code; option.textContent = code; option.selected = true; el('services').append(option); });
     const preparing = data.estado === 'preparando', processing = data.estado === 'processando', editable = data.estado === 'pronto' && !busy;
     el('title').textContent = data.estado === 'concluido' ? 'Resultado da vinculação' : `Prévia — ${data.destino}`;
-    el('scope').textContent = `Entressafra: ${data.entressafra_nome} · Setor: ${data.setor_nome} · Caderno: ${data.destino} · Área ${data.filtros.area} / filial ${data.filtros.filial} · Serviços: ${data.filtros.servicos.join(', ')} · Estado: ${data.estado}`;
+    el('scope').textContent = `Entressafra: ${data.entressafra_nome} · Setor: ${data.setor_nome.replace(/^TOTVS\s+\d+\s*\/\s*/, '')} · Caderno: ${data.destino} · Serviços: ${data.filtros.servicos.join(', ')} · Estado: ${data.estado}`;
     el('counts').replaceChildren();
     const labels = {encontradas:'Encontradas',selecionadas:'Selecionadas',elegiveis:'Elegíveis pendentes',ja_vinculadas:'Já vinculadas',bloqueadas:'Bloqueadas na prévia',vinculadas:'Vinculadas agora',falhas:'Não vinculadas após confirmação'};
     Object.entries(data.contagens).forEach(([key,value]) => { const badge = document.createElement('span'); badge.className = 'badge bg-light text-dark border'; badge.textContent = `${labels[key]}: ${value}`; el('counts').append(badge); });
@@ -31,7 +31,7 @@
     data.rows.forEach(item => {
       const row = document.createElement('tr'), checkbox = document.createElement('input'); checkbox.type = 'checkbox'; checkbox.className = 'form-check-input'; checkbox.checked = item.selecionado; checkbox.disabled = !editable || item.estado !== 'elegivel'; checkbox.setAttribute('aria-label',`Selecionar O.S. ${item.os.numero}`);
       checkbox.addEventListener('change',() => operate(async () => render(await request('selecionar',{ids:[item.id],selecionado:checkbox.checked,busca:el('search').value,pagina:page},true))));
-      cell(row,'').append(checkbox); cell(row,`${item.os.numero} / ${item.os.filial}`); cell(row,`${item.os.codigo_servico} — ${item.os.servico}`); cell(row,`${item.os.codigo_area} / ${item.os.centro_custo || '—'}`); cell(row,item.os.bem);
+      cell(row,'').append(checkbox); cell(row,item.os.numero); cell(row,item.os.descricao || 'Descrição não informada'); cell(row,`${item.os.rotulo_setor || 'Setor'}: ${item.os.setor_apresentacao || 'Não definido'}`); cell(row,item.os.bem);
       const date = item.os.data_origem; cell(row,date && date.length === 8 ? `${date.slice(6,8)}/${date.slice(4,6)}/${date.slice(0,4)}` : date);
       cell(row,`${item.os.situacao} / término ${item.os.termino}`); cell(row,[item.caderno_atual,item.estado === 'sucesso' ? 'Vinculada com sucesso' : item.motivo].filter(Boolean).join(' · ')); el('rows').append(row);
     });
@@ -77,7 +77,7 @@
     try {
       const result = await request('servicos',scope()); if (current !== serviceVersion) return;
       result.servicos.forEach(service => { const option = document.createElement('option'); option.value = service.codigo; option.textContent = `${service.codigo} — ${service.nome} (${service.quantidade} O.S.)`; el('services').append(option); });
-      el('services-help').textContent = result.servicos.length ? 'Selecione até 20 serviços. Códigos antigos são incluídos quando elegíveis.' : 'Nenhum serviço elegível nesta área/filial.';
+      el('services-help').textContent = result.servicos.length ? 'Selecione até 20 serviços. Códigos antigos são incluídos quando elegíveis.' : 'Nenhum serviço elegível nesta equipe.';
     } catch (error) { if (current === serviceVersion) el('services-help').textContent = error.message; }
   };
   ['entressafra_id','setor_id'].forEach(key => fields[key].addEventListener('change',() => { updateNotebooks(); filterSectors(); services(); }));
@@ -98,7 +98,7 @@
   });
   el('none').addEventListener('click',() => operate(async () => render(await request('selecionar',{todas:true,selecionado:false,busca:'',pagina:page},true))));
   el('confirm').addEventListener('click',() => {
-    if (!data || !confirm(`CONFIRMAR a vinculação de ${data.contagens.selecionadas} O.S. ao caderno “${data.destino}” (entressafra ${data.entressafra_nome}, setor ${data.setor_nome})? Confira se todas pertencem a este caderno. Nenhuma atividade existente será transferida.`)) return;
+    if (!data || !confirm(`CONFIRMAR a vinculação de ${data.contagens.selecionadas} O.S. ao caderno “${data.destino}” (entressafra ${data.entressafra_nome}, setor ${data.setor_nome.replace(/^TOTVS\s+\d+\s*\/\s*/, '')})? Confira se todas pertencem a este caderno. Nenhuma atividade existente será transferida.`)) return;
     operate(async () => { render(await request('confirmar',{quantidade_confirmada:data.contagens.selecionadas},true)); await run(); });
   });
   el('resume').addEventListener('click',() => operate(run)); el('stop').addEventListener('click',() => { running = false; });

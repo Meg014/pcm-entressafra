@@ -26,17 +26,18 @@ final class ListLinks
     private function classify(array $row,int $book,int $season): array
     {
         $old=Access::table('Atividades')->find()->where(['entressafra_id'=>$season,'os_filial'=>'01','os_numero'=>$row['numero']])->first();
-        $sectors=Access::table('Setores')->find()->where(['area_totvs'=>$row['codigo_area'],'filial_totvs'=>'01','ativo'=>true])->all();
+        $sectors=Access::table('Setores')->find()->where(['area_totvs'=>$row['codigo_area'],'filial_totvs'=>'01'])->all();
+        $automatic=$sectors->count()===0&&preg_match('/^[A-Za-z0-9_-]{1,6}$/D',(string)$row['codigo_area']);
         $state='elegivel';$reason=null;
         if((int)($row['identidades']??0)!==1||(int)$row['correspondencias_servico']>1){$state='ambigua';$reason='Número/filial ou serviço ambíguo no TOTVS.';}
         elseif($row['filial']!=='01'||!Orders::available($row)){$state='inelegivel';$reason='Exige filial 01, L/N, origem 2026 e serviço ENTRESSAFRA inequívoco.';}
-        elseif($sectors->count()!==1){$state='ambigua';$reason='Área executante sem mapeamento único e ativo.';}
-        elseif($old&&((int)$old->setor_executante_id!==(int)$sectors->first()->id||$old->area_executante_totvs!==$row['codigo_area'])){$state='ambigua';$reason='Equipe executante diverge do registro local; histórico preservado.';}
+        elseif(!$automatic&&($sectors->count()!==1||!$sectors->first()->ativo)){$state='ambigua';$reason='Área executante sem identificação única e ativa.';}
+        elseif($old&&($automatic||(int)$old->setor_executante_id!==(int)$sectors->first()->id||$old->area_executante_totvs!==$row['codigo_area'])){$state='ambigua';$reason='Equipe executante diverge do registro local; histórico preservado.';}
         elseif($old&&$old->caderno_id!==null){$state=(int)$old->caderno_id===$book?'mesmo':'outro';$reason=$state==='mesmo'?'Já vinculada ao mesmo caderno.':'Transferência exige seleção explícita e justificativa.';}
         $current=$old?->caderno_id?Access::table('Cadernos')->get($old->caderno_id):null;
         $sectorId=$sectors->count()===1?(int)$sectors->first()->id:null;
         $associate=$sectorId&&!in_array($sectorId,Access::notebookSectors($book),true);
-        return ['estado'=>$state,'motivo'=>$reason,'atividade_id'=>$old?->id,'caderno_atual'=>$old?->caderno_id,'caderno_nome'=>$current?->nome,'descricao'=>$current?->descricao,'setor_id'=>$sectorId,'equipe'=>$sectors->count()===1?$sectors->first()->nome:'Não identificado','associar_equipe'=>$associate];
+        return ['estado'=>$state,'motivo'=>$reason,'atividade_id'=>$old?->id,'caderno_atual'=>$old?->caderno_id,'caderno_nome'=>$current?->nome,'descricao'=>$current?->descricao,'setor_id'=>$sectorId,'equipe'=>$sectors->count()===1?$sectors->first()->nome:($automatic?'TOTVS 01 / '.$row['codigo_area']:'Não identificado'),'criar_equipe'=>(bool)$automatic,'associar_equipe'=>$associate];
     }
     public function create(int $userId,int $book,string $text): string
     {
@@ -103,6 +104,21 @@ final class ListLinks
             Access::audit(Access::actor($userId),'lista_os_confirmada',null,null,['lote_id'=>$job->id,'quantidade'=>$count,'transferencias'=>$transfers],$reason?:'Vínculos por lista conferida.');
         });
     }
+    public function confirmEligible(int $userId,string $token): void
+    {
+        Access::table('VinculosLotes')->getConnection()->transactional(function()use($userId,$token){
+            $job=$this->locked($userId,$token);
+            if(in_array($job->estado,['processando','concluido'],true))return;
+            if($job->estado!=='pronto')throw new \DomainException('Aguarde a conferência completa das O.S.');
+            $items=Access::table('VinculosItens');
+            $quantity=$items->find()->where(['lote_id'=>$job->id,'estado'=>'elegivel'])->count();
+            if(!$quantity)throw new \DomainException('Nenhuma O.S. disponível para novo vínculo. Confira as pendências.');
+            // Never inherit a transfer selection from the separate admin tool.
+            $items->updateAll(['selecionado'=>false],['lote_id'=>$job->id]);
+            $items->updateAll(['selecionado'=>true],['lote_id'=>$job->id,'estado'=>'elegivel']);
+            $this->start($userId,$token,$quantity,'');
+        });
+    }
     public function clear(int $userId,string $token): void
     {
         Access::table('VinculosLotes')->getConnection()->transactional(function()use($userId,$token){
@@ -123,11 +139,18 @@ final class ListLinks
                 $ctx=$this->context($userId,(int)$job->caderno_id);$season=(int)$ctx['season']->id;
                 if($db->getDriver() instanceof \Cake\Database\Driver\Postgres)$db->execute('SELECT id FROM entressafras WHERE id=? FOR UPDATE',[$season]);
                 $row=$source[$item->numero]??null;if(!$row)throw new \DomainException('O.S. não encontrada na revalidação.');
+                if($db->getDriver() instanceof \Cake\Database\Driver\Postgres)$db->execute('SELECT pg_advisory_xact_lock(hashtext(?))',['pcm_equipe:'.$row['filial'].':'.$row['codigo_area']]);
                 $now=$this->classify($row,(int)$job->caderno_id,$season);$preview=json_decode($item->snapshot,true)['classificacao'];
+                $original=json_decode($item->snapshot,true)['os'];
                 $f=json_decode($job->filtros,true);
                 if($now['estado']==='mesmo'){$item->estado='mesmo';$item->motivo='Já vinculada por outro processamento; sem duplicar.';$t->saveOrFail($item);return;}
-                if(!in_array($now['estado'],['elegivel','outro'],true)||$now['caderno_atual']!==$preview['caderno_atual']||$now['atividade_id']!==$preview['atividade_id']||$now['setor_id']!==$preview['setor_id'])throw new \DomainException('Identidade, situação, equipe ou vínculo mudou. Prepare nova prévia.');
+                if(!in_array($now['estado'],['elegivel','outro'],true)||$now['caderno_atual']!==$preview['caderno_atual']||$now['atividade_id']!==$preview['atividade_id']||($now['setor_id']!==$preview['setor_id']&&empty($preview['criar_equipe']))||$row['codigo_area']!==$original['codigo_area']||$row['filial']!==$original['filial'])throw new \DomainException('Identidade, situação, equipe ou vínculo mudou. Prepare nova prévia.');
                 if($now['estado']==='outro'&&trim($f['justificativa']??'')==='')throw new \DomainException('Transferência não autorizada.');
+                if($now['criar_equipe']){
+                    $teams=Access::table('Setores');$team=$teams->saveOrFail(Access::entity($teams,['nome'=>'TOTVS '.$row['filial'].' / '.$row['codigo_area'],'area_totvs'=>$row['codigo_area'],'filial_totvs'=>$row['filial'],'ativo'=>true]));
+                    $now['setor_id']=(int)$team->id;$now['associar_equipe']=true;
+                    Access::audit($ctx['user'],'equipe_identificada_totvs',null,null,$team->toArray(),'Código original STJ010.TJ_CODAREA, confirmado na consulta da O.S.');
+                }
                 $activities=Access::table('Atividades');$a=$now['atividade_id']?$activities->get($now['atividade_id']):null;$before=$a?->toArray();
                 if(!$a){$stamp=gmdate('Y-m-d H:i:s');$a=Access::entity($activities,['entressafra_id'=>$season,'setor_executante_id'=>$now['setor_id'],'area_executante_totvs'=>$row['codigo_area'],'identificacao_setor'=>'area_totvs','os_chave'=>$row['chave'],'os_numero'=>$row['numero'],'os_filial'=>'01','servico'=>$row['servico'],'bem'=>$row['bem'],'situacao_totvs'=>$row['situacao'],'disponivel_totvs'=>true,'snapshot_totvs'=>json_encode($row,JSON_THROW_ON_ERROR),'criado_por'=>$userId,'created'=>$stamp,'modified'=>$stamp]);}
                 if($now['associar_equipe']) {

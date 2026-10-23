@@ -9,7 +9,7 @@ OUTER APPLY (SELECT COUNT_BIG(*) AS matches, MAX(RTRIM(s.T4_NOME)) AS name FROM 
 OUTER APPLY (SELECT COUNT_BIG(*) AS matches, MAX(RTRIM(s.T4_NOME)) AS name FROM DADOSP12.dbo.ST4010 s WHERE s.T4_SERVICO=j.TJ_SERVICO AND s.T4_FILIAL='' AND s.D_E_L_E_T_ <> '*') shared_service
 CROSS APPLY (SELECT CASE WHEN local_service.matches>0 THEN local_service.matches ELSE shared_service.matches END AS matches, CASE WHEN local_service.matches>0 THEN local_service.name ELSE shared_service.name END AS name) service
 SQL;
-    public const FIELDS = 'RTRIM(j.TJ_ORDEM) AS numero, RTRIM(j.TJ_FILIAL) AS filial, RTRIM(j.TJ_SERVICO) AS codigo_servico, RTRIM(j.TJ_CODAREA) AS codigo_area, RTRIM(j.TJ_CCUSTO) AS centro_custo, RTRIM(j.TJ_DTORIGI) AS data_origem, RTRIM(j.TJ_SITUACA) AS situacao, RTRIM(j.TJ_TERMINO) AS termino, RTRIM(j.TJ_CODBEM) AS bem, service.name AS servico, service.matches AS correspondencias_servico';
+    public const FIELDS = 'RTRIM(j.TJ_ORDEM) AS numero, RTRIM(j.TJ_FILIAL) AS filial, RTRIM(j.TJ_SERVICO) AS codigo_servico, RTRIM(j.TJ_CODAREA) AS codigo_area, RTRIM(j.TJ_CCUSTO) AS centro_custo, RTRIM(j.TJ_DTORIGI) AS data_origem, RTRIM(j.TJ_SITUACA) AS situacao, RTRIM(j.TJ_TERMINO) AS termino, RTRIM(j.TJ_CODBEM) AS bem, service.name AS servico, service.matches AS correspondencias_servico, CONVERT(varchar(max),j.TJ_OBSERVA) AS descricao_totvs';
     public const OPEN = "j.D_E_L_E_T_ <> '*' AND j.TJ_SITUACA = 'L' AND j.TJ_TERMINO = 'N' AND j.TJ_DTORIGI >= :inicio AND j.TJ_DTORIGI <= :fim AND service.matches=1 AND UPPER(service.name) LIKE :entressafra";
     public static function search(): string
     {

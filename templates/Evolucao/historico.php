@@ -1,5 +1,6 @@
 <?php $this->assign('title','Histórico físico da O.S.'); ?>
 <h1>Histórico físico · O.S. <?= h($activity->os_numero) ?></h1>
+<?php if(in_array($currentUser->perfil,['ADMIN_PCM','PCM'],true)): ?><?= $this->Html->link('Correção administrativa',['action'=>'correcoes','?'=>['os'=>$activity->os_numero]],['class'=>'btn btn-outline-secondary mb-3']) ?><?php endif; ?>
 <section class="panel table-responsive"><table class="table"><thead><tr><th>Referência</th><th>Acumulado</th><th>Revisão</th><th>Responsável</th><th>Registro (UTC)</th><th>Observação / motivo</th></tr></thead><tbody><?php foreach($rows as $r): ?><tr><td><?= h($r['referencia']) ?></td><td><?= h($r['percentual']) ?>%</td><td><?= h($r['revisao']) ?></td><td><?= h($r['responsavel']) ?></td><td><?= h($r['created']) ?></td><td><?= h($r['observacoes']) ?><br><?= h($r['motivo']) ?></td></tr><?php endforeach; ?></tbody></table>
 <p>Atualizações e retificações são novas revisões. O registro original permanece preservado.</p>
 <?= $this->element('simple_pagination',['page'=>$historyPage['page'],'pages'=>$historyPage['pages']]) ?></section>

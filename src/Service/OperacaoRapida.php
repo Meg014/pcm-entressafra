@@ -11,11 +11,16 @@ final class OperacaoRapida
         if(!$progress && $a->disponivel_totvs!==true) { throw new \DomainException('O.S. indisponível para novos apontamentos. Solicite conferência ao PCM.'); }
         return $a;
     }
-    public function result($a,bool $progress=false): array
+    public function result($a,bool $progress=false,array $source=[]): array
     {
         $out=['id'=>(string)$a->id,'numero'=>$a->os_numero,'filial'=>$a->os_filial,'servico'=>$a->servico,'bem'=>$a->bem,'situacao'=>$a->situacao_totvs,'setor'=>$a->setor_executante?->nome??'Pendente','caderno'=>($a->caderno?->nome??'Sem caderno (opcional)'),'entressafra'=>$a->entressafra->nome,'entressafra_id'=>(int)$a->entressafra_id,'descricao_caderno'=>$a->caderno?->descricao??'','selecionavel'=>true,'codigo_area'=>$a->area_executante_totvs,'centro_custo'=>''];
         if($progress) { [$reference,$week]=$this->reference((int)$a->entressafra_id,null,(int)$a->id);$state=(new Evolucao())->state((int)$a->id,$reference);$out+=['referencia'=>$reference,'calendario_confirmado'=>$week!==null,'anterior'=>$state['anterior'],'percentual'=>$state['percentual'],'revisao'=>$state['revisao'],'referencias'=>array_column((new Evolucao())->calendar((int)$a->entressafra_id),'referencia')]; }
-        return $out;
+        $presentation=OsApresentacao::activity($a,$source);
+        if(!$source&&$this->gateway!==null&&$presentation['descricao']==='Descrição não informada'){
+            try{$source=$this->gateway->order($a->os_chave);$presentation=OsApresentacao::activity($a,$source);}
+            catch(\DomainException){/* Display remains available when the source is offline. */}
+        }
+        return $out+$presentation;
     }
     public function reference(int $season,?string $requested=null,?int $activityId=null): array
     {
@@ -41,8 +46,9 @@ final class OperacaoRapida
             foreach($gateway->orders($term,$sector->area_totvs,'01') as $r){
                 if(!\App\Integration\Totvs\Orders::available($r)||$r['filial']!=='01'||$r['codigo_area']!==$sector->area_totvs)continue;
                 $old=Access::table('Atividades')->find()->where(['entressafra_id'=>$season->id,'os_numero'=>$r['numero'],'os_filial'=>'01'])->first();
-                if($old){$a=$this->activity($user,(int)$old->id,true);$out=$this->result($a,$progress);$out['selecionavel']=(int)$old->setor_executante_id===(int)$sector->id&&$old->area_executante_totvs===$r['codigo_area'];}
+                if($old){$a=$this->activity($user,(int)$old->id,true);$out=$this->result($a,$progress,$r);$out['selecionavel']=(int)$old->setor_executante_id===(int)$sector->id&&$old->area_executante_totvs===$r['codigo_area'];}
                 else{$out=['id'=>null,'selecionavel'=>true,'numero'=>$r['numero'],'filial'=>'01','servico'=>$r['servico'],'bem'=>$r['bem'],'setor'=>$sector->nome,'caderno'=>'Sem caderno (opcional)','situacao'=>$r['situacao'],'codigo_area'=>$r['codigo_area'],'centro_custo'=>$r['centro_custo']??''];}
+                $out+=OsApresentacao::source($r,$sector->nome);
                 $out['os_chave']=$r['chave'];$out['confirmar_origem']=true;$results[$r['chave']]=$out;
             }
         }

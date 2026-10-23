@@ -1,0 +1,6 @@
+#porcentagens-lote .table td { padding-block: 6px; }
+#porcentagens-lote .table th { padding-block: 9px; }
+#porcentagens-lote [data-percentage] { min-height: 36px; padding: 4px 8px; }
+#porcentagens-lote .table td:first-child { white-space: nowrap; }
+#porcentagens-lote .table td:nth-child(2) { max-width: 70ch; }
+@media (max-width: 575px) { #porcentagens-lote [data-percentage] { min-height: 44px; } }

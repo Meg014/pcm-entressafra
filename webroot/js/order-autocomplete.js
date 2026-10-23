@@ -5,6 +5,7 @@
   const list = document.getElementById('os-resultados'), message = document.getElementById('os-aviso'), summary = document.getElementById('os-resumo');
   const filters = ['entressafra_id', 'setor_id', 'caderno_id'];
   let timer, controller, version = 0, active = -1;
+  const identification = order => `O.S. ${order.numero}\nDescrição: ${order.descricao || 'Descrição não informada'}\n${order.rotulo_setor || 'Setor'}: ${order.setor_apresentacao || 'Não definido'}`;
   const close = () => {
     list.hidden = true; input.setAttribute('aria-expanded', 'false'); input.removeAttribute('aria-activedescendant'); active = -1;
   };
@@ -21,8 +22,9 @@
       try{const response=await fetch(root.dataset.identify,{method:'POST',headers:{'Content-Type':'application/json','X-CSRF-Token':input.form.elements._csrfToken?.value||''},body:JSON.stringify({os_chave:order.os_chave,tipo:root.dataset.progress==='1'?'evolucao':'apontamento'})});if(current!==version)return;if(response.redirected)throw new Error('Entre novamente no sistema para continuar.');const data=await response.json();if(!response.ok)throw new Error(data.error||'Não foi possível confirmar a O.S.');return choose(data.order);}catch(error){if(current===version)message.textContent=error.message;return;}
     }
     if(!order.id)return;
-    cancel(); key.value = order.id; input.value = `${order.numero} · ${order.servico}`;
-    summary.textContent = `O.S. ${order.numero} / ${order.filial} · ${order.servico} · Bem: ${order.bem || 'Não informado'} · ${order.setor} · ${order.caderno}${order.descricao_caderno ? ' · ' + order.descricao_caderno : ''} · Situação na consulta: ${order.situacao || 'Não informada'}`;
+    cancel(); key.value = order.id; input.value = order.numero;
+    summary.textContent = identification(order);
+    summary.setAttribute('style', 'white-space: pre-line');
     summary.hidden = false; input.setCustomValidity(''); message.textContent = 'O.S. selecionada e identificada. Confira os dados antes de salvar.'; input.focus();
     if(root.dataset.progress==='1')window.dispatchEvent(new CustomEvent('pcm-order-selected',{detail:order}));
   };
@@ -45,7 +47,8 @@
         data.results.forEach((order,index) => {
           const option = document.createElement('button'); option.type = 'button'; option.id = `${list.id}-${index}`;
           option.setAttribute('role','option'); option.setAttribute('aria-selected','false'); option.className = 'd-block w-100 text-start border-0 border-bottom p-3 bg-white';
-          option.textContent = `${order.numero} / ${order.filial} · ${order.servico} · ${order.bem || 'Bem não informado'} · Área: ${order.codigo_area} · C.C.: ${order.centro_custo || 'Não informado'} · ${order.setor} · ${order.caderno} · ${order.situacao || 'Situação não informada'}${order.aviso ? ' · ' + order.aviso : ''}`;
+          option.setAttribute('style', 'white-space: pre-line');
+          option.textContent = identification(order) + (order.aviso ? '\n' + order.aviso : '');
           option.disabled = order.selecionavel !== true; option.setAttribute('aria-disabled', String(option.disabled));
           option.addEventListener('mousedown', event => event.preventDefault()); option.addEventListener('click', () => choose(order)); list.append(option);
           if (!order.selecionavel && root.dataset.link) {

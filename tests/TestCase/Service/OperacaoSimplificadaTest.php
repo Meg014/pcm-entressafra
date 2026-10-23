@@ -106,10 +106,11 @@ class OperacaoSimplificadaTest extends TestCase
     public function testQuickAccumulatedProgressHasAutomaticWeekAndRetroactivePermission(): void
     {
         $this->auth($this->computer);$this->get('/operacao/ordens?q=os-&tipo=evolucao');$this->assertResponseOk();$row=json_decode((string)$this->_response->getBody(),true)['results'][0];
-        $this->enableCsrfToken();$this->post('/lancar-porcentagem',['atividade_id'=>$this->activities[0],'chave'=>bin2hex(random_bytes(16)),'revisao'=>0,'referencia'=>$row['referencia'],'percentual'=>30]);$this->assertRedirect('/lancar-porcentagem');
+        $t=Access::table('AreasFabrica');$area=$t->saveOrFail(Access::entity($t,['nome'=>'MOENDA','entressafra_id'=>$this->season]));$book=Access::table('Atividades')->get($this->activities[0])->caderno_id;Access::table('Cadernos')->updateAll(['area_curva_id'=>$area->id],['id'=>$book]);
+        $this->enableCsrfToken();$this->post('/lancar-porcentagem?area_id='.$area->id,['chave'=>bin2hex(random_bytes(16)),'alteracoes_json'=>json_encode([['atividade_id'=>$this->activities[0],'percentual'=>30,'base'=>0,'revisao'=>0,'referencia'=>$row['referencia']]])]);$this->assertRedirect();
         $state=(new Evolucao())->state($this->activities[0],$row['referencia']);$this->assertSame(30.0,$state['percentual']);$this->assertSame($this->computer,(int)$state['registro']['usuario_id']);
-        $this->post('/lancar-porcentagem',['atividade_id'=>$this->activities[0],'chave'=>bin2hex(random_bytes(16)),'revisao'=>0,'referencia'=>'2026-09-07','percentual'=>20]);$this->assertResponseCode(403);
-        $this->get('/lancar-porcentagem');$this->assertResponseOk();$this->assertResponseNotContains('name="entressafra_id"');$this->assertResponseNotContains('name="setor_id"');$this->assertResponseNotContains('name="caderno_id"');
+        $this->post('/lancar-porcentagem',['atividade_id'=>$this->activities[0],'percentual'=>20]);$this->assertResponseOk();$this->assertResponseContains('lançamento individual foi encerrado');
+        $this->get('/lancar-porcentagem');$this->assertResponseOk();$this->assertResponseNotContains('name="referencia"');$this->assertResponseNotContains('name="setor_id"');$this->assertResponseNotContains('name="caderno_id"');
     }
     public function testNoWeightsShowsUnweightedCountInsteadOfOfficialCurve(): void
     {

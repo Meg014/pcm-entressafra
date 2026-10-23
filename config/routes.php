@@ -5,6 +5,7 @@ use Cake\Routing\RouteBuilder;
 return function (RouteBuilder $routes): void {
     $routes->setRouteClass(DashedRoute::class);
     $routes->scope('/', function (RouteBuilder $builder): void {
+        $builder->connect('/os-sem-caderno',['controller'=>'OsSemCaderno','action'=>'index'])->setMethods(['GET','POST']);
         $builder->connect('/escolher-entressafra',['controller'=>'Periodos','action'=>'index'])->setMethods(['GET']);
         $builder->connect('/escolher-entressafra/entrar',['controller'=>'Periodos','action'=>'selecionar'])->setMethods(['POST']);
         $builder->connect('/setores/curva/{id}',['controller'=>'Setores','action'=>'curva'])->setPatterns(['id'=>'[1-9][0-9]*'])->setPass(['id'])->setMethods(['GET','POST']);
@@ -12,6 +13,7 @@ return function (RouteBuilder $routes): void {
         $builder->connect('/organizacao-curva',['controller'=>'Organizacao','action'=>'index'])->setMethods(['GET','POST']);
         $builder->connect('/organizacao-curva/previa',['controller'=>'Organizacao','action'=>'previa'])->setMethods(['GET','POST']);
         $builder->connect('/cadernos/{id}/vincular-lista',['controller'=>'Organizacao','action'=>'lista'])->setPatterns(['id'=>'[1-9][0-9]*'])->setPass(['id'])->setMethods(['GET','POST']);
+        $builder->connect('/cadernos/{id}/transferir-os',['controller'=>'Organizacao','action'=>'transferencia'])->setPatterns(['id'=>'[1-9][0-9]*'])->setPass(['id'])->setMethods(['GET','POST']);
         $builder->connect('/prazos-entressafra',['controller'=>'Prazos','action'=>'index'])->setMethods(['GET','POST']);
         $builder->connect('/operacao/ordens',['controller'=>'Operacional','action'=>'ordens'])->setMethods(['GET']);
         $builder->connect('/operacao/identificar',['controller'=>'Operacional','action'=>'identificar'])->setMethods(['POST']);
@@ -19,6 +21,7 @@ return function (RouteBuilder $routes): void {
         $builder->connect('/fila-pcm',['controller'=>'FilaPcm','action'=>'index'])->setMethods(['GET']);
         $builder->connect('/fila-pcm/os/{id}',['controller'=>'FilaPcm','action'=>'view'])->setPatterns(['id'=>'[1-9][0-9]*'])->setPass(['id'])->setMethods(['GET','POST']);
         $builder->connect('/evolucao',['controller'=>'Evolucao','action'=>'index'])->setMethods(['GET','POST']);
+        $builder->connect('/evolucao/correcoes',['controller'=>'Evolucao','action'=>'correcoes'])->setMethods(['GET','POST']);
         $builder->connect('/evolucao/analise',['controller'=>'Evolucao','action'=>'analise'])->setMethods(['GET']);
         $builder->connect('/evolucao/configuracao',['controller'=>'Evolucao','action'=>'configuracao'])->setMethods(['GET','POST']);
         $builder->connect('/evolucao/modelo/{type}',['controller'=>'Evolucao','action'=>'modelo'])->setPatterns(['type'=>'pesos|metas'])->setPass(['type'])->setMethods(['GET']);

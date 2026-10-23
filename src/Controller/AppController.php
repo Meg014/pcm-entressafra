@@ -66,6 +66,7 @@ class AppController extends Controller
             $period=$id?$this->fetchTable('Entressafras')->find()->where(['id'=>$id])->first():null;
             if(!$period) {
                 $session->delete('Periodo');
+                $session->delete('Curva.preview');
                 if($controller==='Entressafras'&&in_array($action,['index','add'],true))return true;
                 $event->setResult($this->redirect(['controller'=>'Periodos','action'=>'index']));$event->stopPropagation();return false;
             }
@@ -101,7 +102,7 @@ class AppController extends Controller
         $pathId=(int)$this->request->getParam('pass.0',0);
         if($pathId) {
             if(in_array($controller,['Atividades','FilaPcm'],true)||($controller==='Evolucao'&&$action==='historico'))\App\Service\PeriodoContexto::activity($pathId);
-            elseif($controller==='Cadernos'||($controller==='Organizacao'&&$action==='lista'))\App\Service\PeriodoContexto::notebook($pathId);
+            elseif($controller==='Cadernos'||($controller==='Organizacao'&&in_array($action,['lista','transferencia'],true)))\App\Service\PeriodoContexto::notebook($pathId);
             elseif($controller==='Apontamentos'){$entry=$this->fetchTable('Apontamentos')->get($pathId);\App\Service\PeriodoContexto::activity((int)$entry->atividade_id);}
             elseif($controller==='Entressafras')\App\Service\PeriodoContexto::season($pathId);
         }

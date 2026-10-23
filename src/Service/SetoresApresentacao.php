@@ -4,6 +4,12 @@ namespace App\Service;
 
 final class SetoresApresentacao
 {
+    public function availableAreas(int $season)
+    {
+        PeriodoContexto::season($season);
+        $associated=Access::table('CalendariosOperacionais')->find()->select(['area_fabrica_id'])->where(['entressafra_id'=>$season,'area_fabrica_id IS NOT'=>null]);
+        return Access::table('AreasFabrica')->find()->where(['OR'=>[['AreasFabrica.entressafra_id'=>$season],['AreasFabrica.entressafra_id IS'=>null,'AreasFabrica.id IN'=>$associated]]]);
+    }
     public function configuration(int $season,int $area): array
     {
         PeriodoContexto::season($season);$s=Access::table('Entressafras')->get($season);$a=Access::table('AreasFabrica')->get($area);

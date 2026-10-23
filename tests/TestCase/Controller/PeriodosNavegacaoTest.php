@@ -37,8 +37,8 @@ class PeriodosNavegacaoTest extends TestCase
     public function testNotebookListAndDetailExposePresetListTool(): void
     {
         $this->select();$path='/cadernos/'.$this->books[0].'/vincular-lista';
-        foreach(['/cadernos','/cadernos/view/'.$this->books[0]] as $url){$this->get($url);$this->assertResponseOk();$this->assertResponseContains($path);$this->assertResponseContains('Vincular O.S. por lista');}
-        $this->get($path);$this->assertResponseOk();$this->assertResponseContains('Caderno período 0');$this->assertResponseContains('Conferir O.S. no TOTVS');
+        foreach(['/cadernos','/cadernos/view/'.$this->books[0]] as $url){$this->get($url);$this->assertResponseOk();$this->assertResponseContains($path);$this->assertResponseContains('Vincular O.S.');}
+        $this->get($path);$this->assertResponseOk();$this->assertResponseContains('Caderno período 0');$this->assertResponseContains('Conferir');
         $dom=new \DOMDocument();@$dom->loadHTML((string)$this->_response->getBody());$xp=new \DOMXPath($dom);
         $this->assertSame(0,$xp->query('//select')->length);$this->assertSame(1,$xp->query('//textarea[@name="numeros"]')->length);
         $this->assertResponseContains('Pendente de confirmação administrativa');
@@ -46,12 +46,12 @@ class PeriodosNavegacaoTest extends TestCase
     public function testSpecificDescriptionIsAuditedAndNeverUsesGenericNotebookText(): void
     {
         $this->select();$id=$this->activities[0];$t=Access::table('Cadernos');$b=$t->get($this->books[0]);$b->descricao='TEXTO GERAL DO CADERNO';$t->saveOrFail($b);
-        $this->get('/controle-pcm');$this->assertResponseOk();$this->assertResponseContains('Descrição pendente');$this->assertResponseNotContains('TEXTO GERAL DO CADERNO');
+        $this->get('/controle-pcm');$this->assertResponseOk();$this->assertResponseContains('Descrição não informada');$this->assertResponseNotContains('TEXTO GERAL DO CADERNO');
         $this->assertResponseNotContains('<th>Equipamento</th>');$this->assertResponseContains('/atividades/view/'.$id);
         $this->post('/atividades/descricao/'.$id,['descricao_atividade'=>'Revisão específica conferida no caderno','descricao_origem'=>'Caderno de teste, linha 1']);$this->assertRedirect('/atividades/view/'.$id);
         $this->assertSame(1,Access::table('Auditorias')->find()->where(['acao'=>'descricao_atividade_atualizada'])->count());
         $this->assertSame('Revisão específica conferida no caderno',Access::table('Atividades')->get($id)->descricao_atividade);$this->get('/controle-pcm?q=conferida');$this->assertResponseOk();$this->assertResponseContains('Revisão específica conferida no caderno');
-        $this->get('/atividades/view/'.$id);$this->assertResponseOk();$this->assertResponseContains('Revisão específica conferida no caderno');$this->assertResponseContains('Serviço TOTVS:');$this->assertResponseContains('Equipamento:');$this->assertResponseContains('Histórico de porcentagens');$this->assertResponseContains('Setor da Curva S:');
+        $this->get('/atividades/view/'.$id);$this->assertResponseOk();$this->assertResponseContains('Revisão específica conferida no caderno');$this->assertResponseContains('Serviço TOTVS:');$this->assertResponseContains('Equipamento:');$this->assertResponseContains('Histórico de porcentagens');$this->assertResponseContains('Setor:');
         $this->post('/atividades/descricao/'.$id,['descricao_atividade'=>'','descricao_origem'=>'']);$this->assertRedirect();$this->assertSame('Revisão específica conferida no caderno',Access::table('Atividades')->get($id)->descricao_atividade);
     }
     public function testChoicePersistsOnNavigationReloadAndSwitch(): void
@@ -110,9 +110,9 @@ class PeriodosNavegacaoTest extends TestCase
     public function testMenuHasOnlyPrimaryAdministrativeLinksAndOldRoutesStillWork(): void
     {
         $this->select();$this->get('/cadernos');$this->assertResponseOk();$doc=new \DOMDocument();@$doc->loadHTML((string)$this->_response->getBody());$xp=new \DOMXPath($doc);$paths=[];foreach($xp->query('//nav[@aria-label="Cadastros administrativos"]//a') as $link)$paths[]=$link->getAttribute('href');
-        $this->assertSame(['/entressafras','/setores','/cadernos','/usuarios','/atividades'],$paths);
-        foreach(['/vinculos-lote','/evolucao','/prazos-entressafra','/organizacao-curva','/setores?equipes=1'] as $path){$this->get($path);$this->assertResponseOk();}
-        $this->get('/cadernos/view/'.$this->books[0]);$this->assertResponseContains('Vincular O.S. por lista');$this->get('/cadernos/'.$this->books[0].'/vincular-lista');$this->assertResponseContains('Conferir O.S.');$this->assertResponseNotContains('id="bulk-services"');
+        $this->assertSame(['/entressafras','/setores','/cadernos','/os-sem-caderno','/usuarios','/atividades'],$paths);
+        foreach(['/vinculos-lote','/lancar-porcentagem','/prazos-entressafra','/organizacao-curva','/setores?equipes=1'] as $path){$this->get($path);$this->assertResponseOk();}
+        $this->get('/cadernos/view/'.$this->books[0]);$this->assertResponseContains('Vincular O.S.');$this->get('/cadernos/'.$this->books[0].'/vincular-lista');$this->assertResponseContains('Conferir');$this->assertResponseNotContains('id="bulk-services"');
     }
     public function testPeriodSelectionRequiresCsrfAndDoesNotChangeBusinessData(): void
     {

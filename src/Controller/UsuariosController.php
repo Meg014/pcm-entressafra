@@ -19,7 +19,7 @@ class UsuariosController extends AppController
             try { (new Users())->save((int)$this->currentUser->id, $this->request->getData(), $id); return $this->redirect(['action' => 'index']); }
             catch (\DomainException $e) { $this->Flash->error($e->getMessage()); }
         }
-        $sectors = $this->fetchTable('Setores')->find('list')->orderBy(['nome' => 'ASC'])->all();
+        $sectors = \App\Service\OsApresentacao::options($this->fetchTable('Setores')->find('list')->orderBy(['nome' => 'ASC'])->all());
         $this->set(compact('row', 'selected', 'sectors')); $this->viewBuilder()->setTemplate('form');
     }
 }

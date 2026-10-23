@@ -4,7 +4,7 @@ $action = $this->request->getParam('action');
 $canPcm = !empty($currentUser) && in_array($currentUser->perfil,['ADMIN_PCM','PCM'],true);
 $computer=\App\Service\Access::operational($currentUser??null);
 $administrative = $canPcm ? ['Entressafras'=>'Entressafras','Setores'=>'Setores','Cadernos'=>'Cadernos'] : [];
-if (!empty($currentUser) && $currentUser->perfil==='ADMIN_PCM') { $administrative['Usuarios']='Usuários e permissões'; }
+if (!empty($currentUser) && $currentUser->perfil==='ADMIN_PCM') { $administrative['OsSemCaderno']='O.S. sem Caderno';$administrative['Usuarios']='Usuários e permissões'; }
 if ($canPcm) { $administrative['Atividades']='Todas as atividades / O.S.'; }
 ?>
 <!DOCTYPE html>
@@ -43,7 +43,7 @@ if ($canPcm) { $administrative['Atividades']='Todas as atividades / O.S.'; }
         <?= $this->Html->link('Novo apontamento',['controller'=>'Apontamentos','action'=>'add'],['class'=>'nav-item'.($controller==='Apontamentos'&&$action==='add'?' selected':''),'aria-current'=>$controller==='Apontamentos'&&$action==='add'?'page':'false']) ?>
         <?= $this->Html->link('Lançar porcentagem',['controller'=>'Operacional','action'=>'porcentagem'],['class'=>'nav-item'.($controller==='Operacional'?' selected':''),'aria-current'=>$controller==='Operacional'?'page':'false']) ?>
         <?php endif; ?>
-        <?php foreach (!empty($currentUser) && !$canPcm ? ($computer?['Apontamentos'=>'Histórico de apontamentos']:['Dashboard' => 'Visão geral', 'Atividades' => 'Atividades / O.S.', 'Apontamentos' => 'Apontamentos', 'Evolucao'=>'Evolução em lote']) : [] as $name => $label): ?>
+        <?php foreach (!empty($currentUser) && !$canPcm ? ($computer?['Apontamentos'=>'Histórico de apontamentos']:['Dashboard' => 'Visão geral', 'Atividades' => 'Atividades / O.S.', 'Apontamentos' => 'Apontamentos']) : [] as $name => $label): ?>
             <?php $active = $controller === $name && !($name==='Apontamentos' && $action!=='index') && !($name==='Evolucao' && $action!=='index'); ?>
             <?= $this->Html->link($label, ['controller' => $name, 'action' => 'index'], ['class' => 'nav-item ' . ($active ? 'selected' : ''), 'aria-current' => $active ? 'page' : 'false']) ?>
         <?php endforeach; ?>
