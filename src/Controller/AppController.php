@@ -38,20 +38,35 @@ class AppController extends Controller
         $session = $this->request->getSession();
         $id = (int)$session->read('Auth.id');
         $user = $id ? $this->fetchTable('Usuarios')->find()->where(['id' => $id, 'ativo' => true])->first() : null;
-        if (!$user || !hash_equals(hash('sha256', $user->senha_hash), (string)$session->read('Auth.stamp')) || time() - (int)$session->read('Auth.last') > 1800) {
+        $remember=new \App\Service\ComputerSession();
+        $credential=$this->request->getCookie(\App\Service\ComputerSession::COOKIE);
+        $valid=$user&&hash_equals(hash('sha256',$user->senha_hash),(string)$session->read('Auth.stamp'));
+        if(!$valid||(!\App\Service\Access::operational($user)&&time()-(int)$session->read('Auth.last')>1800)){
             $session->delete('Auth');
+            $user=$remember->restore($credential);
+            if($user){$session->renew();$session->write('Auth',['id'=>$user->id,'stamp'=>hash('sha256',$user->senha_hash),'last'=>time()]);}
+        }
+        if (!$user) {
+            $session->delete('Auth');
+            if($credential!==null)$this->setResponse($this->response->withCookie($remember->cookie($this->request)));
             $event->setResult($this->redirect(['controller' => 'Auth', 'action' => 'login']));
             $event->stopPropagation();
             return;
         }
         $session->write('Auth.last', time());
+        if(\App\Service\Access::operational($user)&&!($this->request->getParam('controller')==='Auth'&&$this->request->getParam('action')==='logout')){
+            try{
+                $value=$remember->matches($user,$credential)?$credential:$remember->issue($user);
+                $this->setResponse($this->response->withCookie($remember->cookie($this->request,$value)));
+            }catch(\Cake\Database\Exception\QueryException $e){$this->log('Sessão permanente do computador indisponível; confira a migration 20261026150000.','error');}
+        }
         $this->currentUser = $user;
         $this->set('currentUser', $user);
         if(!$this->periodo($event))return;
         if (\App\Service\Access::operational($user)) {
             $controller=$this->request->getParam('controller');$action=$this->request->getParam('action');
             if($controller==='Dashboard') { $event->setResult($this->redirect(['controller'=>'Apontamentos','action'=>'add']));$event->stopPropagation();return; }
-            $allowed=['Insumos'=>['add','index'],'Apontamentos'=>['add','index','view','funcionarios','ordens'],'Operacional'=>['ordens','identificar','porcentagem'],'Evolucao'=>['historico'],'Auth'=>['logout']];
+            $allowed=['Insumos'=>['add','index'],'Apontamentos'=>['add','index','view','funcionarios','ordens','servicos'],'Operacional'=>['ordens','identificar','porcentagem'],'Evolucao'=>['historico'],'Auth'=>['logout']];
             if(!in_array($action,$allowed[$controller]??[],true)) { throw new \Cake\Http\Exception\ForbiddenException('Conta operacional: acesso limitado a lançamentos e históricos autorizados.'); }
         }
     }

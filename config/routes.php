@@ -5,6 +5,11 @@ use Cake\Routing\RouteBuilder;
 return function (RouteBuilder $routes): void {
     $routes->setRouteClass(DashedRoute::class);
     $routes->scope('/', function (RouteBuilder $builder): void {
+        $builder->connect('/apontamentos/servicos',['controller'=>'Apontamentos','action'=>'servicos'])->setMethods(['GET']);
+        $builder->connect('/servicos-sugeridos',['controller'=>'ServicosSugeridos','action'=>'index'])->setMethods(['GET']);
+        $builder->connect('/servicos-sugeridos/add',['controller'=>'ServicosSugeridos','action'=>'add'])->setMethods(['GET','POST']);
+        $builder->connect('/servicos-sugeridos/edit/{id}',['controller'=>'ServicosSugeridos','action'=>'edit'])->setPatterns(['id'=>'[1-9][0-9]*'])->setPass(['id'])->setMethods(['GET','POST']);
+        $builder->connect('/servicos-sugeridos/toggle/{id}',['controller'=>'ServicosSugeridos','action'=>'toggle'])->setPatterns(['id'=>'[1-9][0-9]*'])->setPass(['id'])->setMethods(['POST']);
         $builder->connect('/insumos',['controller'=>'Insumos','action'=>'index'])->setMethods(['GET']);
         $builder->connect('/insumos/add',['controller'=>'Insumos','action'=>'add'])->setMethods(['GET','POST']);
         $builder->connect('/os-sem-caderno',['controller'=>'OsSemCaderno','action'=>'index'])->setMethods(['GET','POST']);

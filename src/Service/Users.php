@@ -28,6 +28,7 @@ final class Users
             $before = $id ? array_intersect_key($entity->toArray(), array_flip(['id','nome','login','perfil','ativo','computador_operacional'])) : null;
             foreach (['nome' => $name, 'login' => $login, 'perfil' => $role, 'ativo' => $active, 'modified' => gmdate('Y-m-d H:i:s')] as $key => $value) { $entity->set($key, $value); }
             $entity->computador_operacional=$computer;
+            if($entity->get('sessao_computador_hash')!==null&&($password!==''||!$active||!$computer))$entity->sessao_computador_hash=null;
             if (!$id) { $entity->created = gmdate('Y-m-d H:i:s'); }
             if ($password !== '') { $entity->senha_hash = password_hash($password, PASSWORD_DEFAULT); $entity->falhas_login = 0; $entity->bloqueado_ate = null; }
             $table->saveOrFail($entity);

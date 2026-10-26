@@ -7,6 +7,19 @@ use App\Service\ConflictException;
 
 class ApontamentosController extends OperacaoController
 {
+    public function servicos()
+    {
+        $this->request->allowMethod(['get']);
+        $term=$this->request->getQuery('q','');$status=200;
+        if(!is_string($term)||mb_strlen($term)>100||mb_strlen(\App\Service\ServiceSuggestions::normalize($term))<2){$status=422;$data=['results'=>[]];}
+        else{
+            try{$data=['results'=>(new \App\Service\ServiceSuggestions())->search($term)];}
+            catch(\Cake\Database\Exception\QueryException|\Cake\Database\Exception\MissingConnectionException|\PDOException $e){
+                $this->log('Catálogo de sugestões indisponível: '.get_class($e),'error');$status=503;$data=['results'=>[]];
+            }
+        }
+        return $this->response->withStatus($status)->withType('application/json')->withHeader('Cache-Control','no-store, private')->withHeader('X-Content-Type-Options','nosniff')->withStringBody(json_encode($data,JSON_THROW_ON_ERROR|JSON_UNESCAPED_UNICODE));
+    }
     private ?\App\Integration\Totvs\GatewayInterface $operationGateway=null;
     protected function totvs(): \App\Integration\Totvs\GatewayInterface { return $this->operationGateway??parent::totvs(); }
     public function ordens(\App\Integration\Totvs\GatewayInterface $gateway)

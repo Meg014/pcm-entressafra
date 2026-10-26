@@ -110,7 +110,7 @@ class PeriodosNavegacaoTest extends TestCase
     public function testMenuHasOnlyPrimaryAdministrativeLinksAndOldRoutesStillWork(): void
     {
         $this->select();$this->get('/cadernos');$this->assertResponseOk();$doc=new \DOMDocument();@$doc->loadHTML((string)$this->_response->getBody());$xp=new \DOMXPath($doc);$paths=[];foreach($xp->query('//nav[@aria-label="Cadastros administrativos"]//a') as $link)$paths[]=$link->getAttribute('href');
-        $this->assertSame(['/entressafras','/setores','/cadernos','/os-sem-caderno','/usuarios','/atividades'],$paths);
+        $this->assertSame(['/entressafras','/setores','/cadernos','/os-sem-caderno','/usuarios','/servicos-sugeridos','/atividades'],$paths);
         foreach(['/vinculos-lote','/lancar-porcentagem','/prazos-entressafra','/organizacao-curva','/setores?equipes=1'] as $path){$this->get($path);$this->assertResponseOk();}
         $this->get('/cadernos/view/'.$this->books[0]);$this->assertResponseContains('Vincular O.S.');$this->get('/cadernos/'.$this->books[0].'/vincular-lista');$this->assertResponseContains('Conferir');$this->assertResponseNotContains('id="bulk-services"');
     }

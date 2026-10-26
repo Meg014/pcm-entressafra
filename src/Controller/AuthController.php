@@ -18,6 +18,12 @@ class AuthController extends AppController
                 $session->delete('Periodo');$session->delete('Curva.preview');
                 $session->write('Auth', ['id' => $user->id, 'stamp' => hash('sha256', $user->senha_hash), 'last' => time()]);
                 $user->falhas_login = 0; $user->bloqueado_ate = null; $table->saveOrFail($user);
+                $remember=new \App\Service\ComputerSession();
+                $this->setResponse($this->response->withCookie($remember->cookie($this->request)));
+                if(\App\Service\Access::operational($user)){
+                    try{$this->setResponse($this->response->withCookie($remember->cookie($this->request,$remember->issue($user))));}
+                    catch(\Cake\Database\Exception\QueryException $e){$this->log('Sessão permanente do computador indisponível; confira a migration 20261026150000.','error');}
+                }
                 if(\App\Service\Access::operational($user))return $this->redirect(['controller'=>'Apontamentos','action'=>'add']);
                 if(in_array($user->perfil,['ADMIN_PCM','PCM'],true))return $this->redirect(['controller'=>'Periodos','action'=>'index']);
                 return $this->redirect(['controller' => 'Dashboard', 'action' => 'index']);
@@ -33,6 +39,8 @@ class AuthController extends AppController
     public function logout()
     {
         $this->request->allowMethod(['post']);
+        $remember=new \App\Service\ComputerSession();$remember->revoke($this->currentUser);
+        $this->setResponse($this->response->withCookie($remember->cookie($this->request)));
         $this->request->getSession()->destroy();
         return $this->redirect(['action' => 'login']);
     }

@@ -26,7 +26,7 @@ class OperacaoSimplificadaTest extends TestCase
         });
         $this->auth($this->admin);
     }
-    private function auth(int $id): void {$u=Access::actor($id);$this->session(['Periodo'=>['id'=>$this->season,'usuario_id'=>$id],'Auth'=>['id'=>$id,'stamp'=>hash('sha256',$u->senha_hash),'last'=>time()]]);}
+    private function auth(int $id,?int $last=null): void {$u=Access::actor($id);$this->session(['Periodo'=>['id'=>$this->season,'usuario_id'=>$id],'Auth'=>['id'=>$id,'stamp'=>hash('sha256',$u->senha_hash),'last'=>$last??time()]]);}
     private function entry(int $index=0,string $start='2026-10-01T07:00',string $end='2026-10-01T09:00'): int
     {\App\Test\Support\CompletedOrder::set($this->activities[$index],$this->admin);return $this->entries->save($this->admin,['atividade_id'=>$this->activities[$index],'funcionario_chave'=>'pessoa-1','inicio'=>$start,'fim'=>$end,'descricao'=>'Serviço de teste']);}
     private function select(int $id): array {return ['id'=>$id,'revisao'=>Access::table('Apontamentos')->get($id)->revisao_pcm];}
@@ -134,5 +134,45 @@ class OperacaoSimplificadaTest extends TestCase
         (new Users())->save($this->admin,['nome'=>'Computador 1','login'=>'computador-1','perfil'=>'RESPONSAVEL_SETOR','ativo'=>'1','setores'=>[$this->sectors[0]]],$this->computer);
         $this->assertTrue(Access::operational(Access::actor($this->computer)));
         $this->expectException(\DomainException::class);(new Users())->save($this->admin,['nome'=>'Computador 1','login'=>'computador-1','perfil'=>'ADMIN_PCM','ativo'=>'1','setores'=>[$this->sectors[0]]],$this->computer);
+    }
+    public function testComputerHasNoIdleTimeoutAndHumanUsersStillExpire(): void
+    {
+        $this->auth($this->computer,time()-86400*90);
+        $this->get('/apontamentos/add');$this->assertResponseOk();$this->assertCookieIsSet(\App\Service\ComputerSession::COOKIE);
+        $this->assertSession($this->computer,'Auth.id');
+        $this->auth($this->admin,time()-1801);
+        $this->get('/atividades');$this->assertRedirect('/login');
+        Access::table('Usuarios')->updateAll(['computador_operacional'=>false],['id'=>$this->computer]);
+        $this->auth($this->computer,time()-1801);
+        $this->get('/apontamentos/add');$this->assertRedirect('/login');
+    }
+    public function testComputerRestoresCollectedPhpSessionAndLogoutRevokesCredential(): void
+    {
+        $this->enableCsrfToken();$this->session(['Auth'=>[]]);
+        $this->post('/login',['login'=>'computador-1','senha'=>'teste123']);$this->assertRedirect('/apontamentos/add');
+        $cookie=$this->_response->getCookieCollection()->get(\App\Service\ComputerSession::COOKIE);$credential=$cookie->getValue();
+        $this->assertTrue($cookie->isHttpOnly());$this->assertSame('Lax',$cookie->getSameSite()->value);
+        $this->assertGreaterThan(time()+86400,$cookie->getExpiresTimestamp());
+        $this->assertNotSame($credential,Access::actor($this->computer)->get('sessao_computador_hash'));
+        $this->session(['Auth'=>[]]);$this->cookie(\App\Service\ComputerSession::COOKIE,$credential);
+        $this->get('/apontamentos/add');$this->assertResponseOk();$this->assertSession($this->computer,'Auth.id');
+        $this->get('/fila-pcm');$this->assertResponseCode(403);
+        $this->post('/logout');$this->assertRedirect('/login');
+        $this->assertNull(Access::actor($this->computer)->get('sessao_computador_hash'));
+        $this->session(['Auth'=>[]]);$this->cookie(\App\Service\ComputerSession::COOKIE,$credential);
+        $this->get('/apontamentos/add');$this->assertRedirect('/login');
+    }
+    public function testComputerCredentialRejectsForgeryAndPasswordOrPermissionChanges(): void
+    {
+        $service=new \App\Service\ComputerSession();$user=Access::actor($this->computer);
+        $credential=$service->issue($user);$this->assertSame($this->computer,(int)$service->restore($credential)->id);
+        $this->assertNull($service->restore($this->computer.'.'.str_repeat('0',64)));
+        $this->assertNull($service->restore(['invalid']));
+        $this->assertArrayNotHasKey('sessao_computador_hash',Access::actor($this->computer)->toArray());
+        Access::table('Usuarios')->updateAll(['senha_hash'=>password_hash('outra-senha',PASSWORD_DEFAULT)],['id'=>$this->computer]);
+        $this->assertNull($service->restore($credential));
+        $credential=$service->issue(Access::actor($this->computer));
+        Access::table('Usuarios')->updateAll(['ativo'=>false],['id'=>$this->computer]);$this->assertNull($service->restore($credential));
+        Access::table('Usuarios')->updateAll(['ativo'=>true,'computador_operacional'=>false],['id'=>$this->computer]);$this->assertNull($service->restore($credential));
     }
 }

@@ -82,6 +82,74 @@ class EtapaDoisTest extends TestCase
         $this->expectException(\DomainException::class);
         (new Activities(new FakeTotvs()))->link($this->admin,$this->notebooks[1],'nova-os');
     }
+
+    public function testServiceCatalogHttpWritesAndHistoricalText(): void
+    {
+        $this->enableCsrfToken();
+        $this->get('/servicos-sugeridos/add');$this->assertResponseOk();
+        $this->post('/servicos-sugeridos/add',['descricao'=>'TORQUE ESPECIAL HTTP','ativo'=>'1']);$this->assertRedirect('/servicos-sugeridos');
+        $catalog=Access::table('ServicosSugeridos');$suggestion=$catalog->find()->where(['descricao'=>'TORQUE ESPECIAL HTTP'])->firstOrFail();
+        $input=$this->input();$input['descricao']=$suggestion->descricao;
+        $entry=$this->entries->save($this->responsavel,$input);
+        $this->get('/servicos-sugeridos/edit/'.$suggestion->id);$this->assertResponseOk();
+        $this->post('/servicos-sugeridos/edit/'.$suggestion->id,['descricao'=>'TORQUE ALTERADO HTTP','ativo'=>'1']);$this->assertRedirect('/servicos-sugeridos');
+        $this->post('/servicos-sugeridos/toggle/'.$suggestion->id,['ativo'=>'0']);$this->assertRedirect('/servicos-sugeridos');
+        $this->assertFalse($catalog->get($suggestion->id)->ativo);
+        $this->assertSame('TORQUE ESPECIAL HTTP',Access::table('Apontamentos')->get($entry)->descricao);
+        $this->authenticate($this->pcm);
+        $this->post('/servicos-sugeridos/edit/'.$suggestion->id,['descricao'=>'INVASÃO','ativo'=>'1']);$this->assertResponseCode(403);
+        $this->authenticate($this->responsavel);
+        $this->post('/servicos-sugeridos/toggle/'.$suggestion->id,['ativo'=>'1']);$this->assertResponseCode(403);
+        $this->assertSame('TORQUE ALTERADO HTTP',$catalog->get($suggestion->id)->descricao);
+    }
+    public function testMissingServiceCatalogNeverBlocksSavingFreeText(): void
+    {
+        $db=Access::table('ServicosSugeridos')->getConnection();
+        $db->execute('ALTER TABLE servicos_sugeridos RENAME TO servicos_sugeridos_indisponivel');
+        try{
+            $this->get('/apontamentos/servicos?q=des');$this->assertResponseCode(503);
+            $this->assertSame([],json_decode((string)$this->_response->getBody(),true)['results']);
+            $input=$this->input();$input['descricao']='Descrição personalizada sem catálogo instalado';
+            $entry=$this->entries->save($this->responsavel,$input);
+            $this->assertSame($input['descricao'],Access::table('Apontamentos')->get($entry)->descricao);
+        }finally{$db->execute('ALTER TABLE servicos_sugeridos_indisponivel RENAME TO servicos_sugeridos');}
+    }
+    public function testServiceCatalogSearchAdministrationAndFreeText(): void
+    {
+        $table=Access::table('ServicosSugeridos');$table->deleteAll([]);
+        $service=new \App\Service\ServiceSuggestions();
+        $id=$service->save($this->admin,['descricao'=>'LUBRIFICAÇÃO','ativo'=>'1']);
+        $this->assertSame('LUBRIFICAÇÃO',$service->search('LuBrI')[0]['descricao']);
+        $this->assertCount(1,$service->search("lubrificac\u{0327}a\u{0303}o"));
+        $this->assertSame([],$service->search('l'));
+        $this->assertSame([],$service->search('lu%'));
+        for($n=0;$n<15;$n++)$service->save($this->admin,['descricao'=>'TESTE '.$n]);
+        $this->assertCount(10,$service->search('teste'));
+        try{$service->save($this->admin,['descricao'=>'  lubrificacao  ']);$this->fail('Duplicata aceita');}catch(\DomainException $e){$this->assertStringContainsString('equivalente',$e->getMessage());}
+        foreach([$this->pcm,$this->responsavel] as $actor){
+            try{$service->save($actor,['descricao'=>'Proibido']);$this->fail('Perfil indevido');}catch(\Cake\Http\Exception\ForbiddenException){$this->assertTrue(true);}
+        }
+        $input=$this->input();$input['descricao']="  Descrição livre\n".str_repeat('ROLAMENTO ',90)."  ";
+        $entry=$this->entries->save($this->responsavel,$input);
+        $this->assertSame($input['descricao'],Access::table('Apontamentos')->get($entry)->descricao);
+        $this->assertSame(16,$table->find()->count());
+        $service->save($this->admin,['descricao'=>'LUBRIFICAÇÃO GERAL','ativo'=>'1'],$id);
+        $service->setActive($this->admin,$id,'0');
+        $this->assertSame([],$service->search('lubri'));
+        $this->assertSame($input['descricao'],Access::table('Apontamentos')->get($entry)->descricao);
+        $this->assertGreaterThan(0,Access::table('Auditorias')->find()->where(['acao'=>'servico_sugestao_situacao'])->count());
+        $this->get('/servicos-sugeridos');$this->assertResponseOk();$this->assertResponseContains('LUBRIFICAÇÃO GERAL');
+        $this->get('/servicos-sugeridos?q=TE%25');$this->assertResponseOk();$this->assertResponseNotContains('TESTE 0');
+        $this->authenticate($this->pcm);$this->get('/servicos-sugeridos');$this->assertResponseCode(403);
+        $this->authenticate($this->responsavel);$this->get('/apontamentos/servicos?q=teste');$this->assertResponseOk();
+        $this->assertCount(10,json_decode((string)$this->_response->getBody(),true)['results']);
+        $this->get('/apontamentos/servicos?q=a');$this->assertResponseCode(422);
+        $this->get('/apontamentos/servicos?q%5B%5D=teste');$this->assertResponseCode(422);
+        $this->get('/apontamentos/servicos?q='.str_repeat('a',101));$this->assertResponseCode(422);
+        Access::table('Usuarios')->updateAll(['computador_operacional'=>true],['id'=>$this->responsavel]);
+        $this->authenticate($this->responsavel);$this->get('/apontamentos/servicos?q=teste');$this->assertResponseOk();
+        $this->get('/servicos-sugeridos');$this->assertResponseCode(403);
+    }
     public function testEmployeeIsConfirmedByServerAndHoursAreCalculated(): void
     {
         $mock = $this->createMock(\App\Integration\Totvs\GatewayInterface::class);
@@ -257,7 +325,7 @@ class EtapaDoisTest extends TestCase
             $this->assertSame($allowed?['/fila-pcm','/apontamentos/add','/insumos/add','/lancar-porcentagem','/consulta-pcm','/controle-pcm']:['/apontamentos/add','/insumos/add','/lancar-porcentagem','/','/atividades','/apontamentos'],$paths);
             $paths=[]; foreach ($xpath->query('//details[@id="pcm-user-menu"]//a') as $link) { $paths[]=$link->getAttribute('href'); }
             $expected=$allowed?['/entressafras','/setores','/cadernos']:[];
-            if ($role==='ADMIN_PCM') { $expected[]='/os-sem-caderno';$expected[]='/usuarios'; }
+            if ($role==='ADMIN_PCM') { $expected[]='/os-sem-caderno';$expected[]='/usuarios';$expected[]='/servicos-sugeridos'; }
             if ($allowed) { $expected[]='/atividades'; }
             $this->assertSame($expected,$paths);
             $this->assertSame(1,$xpath->query('//details[@id="pcm-user-menu"]//form[@action="/logout" and @method="post"]//button[@type="submit"]')->length);

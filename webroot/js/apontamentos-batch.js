@@ -12,6 +12,7 @@
  const number=()=>{document.getElementById('entry-count').value=lines.children.length;[...lines.children].forEach((row,i)=>{row.querySelector('.entry-number span').textContent=i+1;});};
  const init=row=>{
   window.initEmployeeAutocomplete(row.querySelector('[data-lookup]'));
+  window.initServiceAutocomplete(row.querySelector('[data-service-lookup]'));
   const fields=[...row.querySelectorAll('[data-mask]')], [date,start,end]=fields;
   const validDate=v=>{const m=/^(\d{2})\/(\d{2})\/(\d{4})$/.exec(v);if(!m||+m[3]<1)return false;const d=new Date(0);d.setUTCFullYear(+m[3],+m[2]-1,+m[1]);return d.getUTCFullYear()===+m[3]&&d.getUTCMonth()===+m[2]-1&&d.getUTCDate()===+m[1];};
   const time=v=>/^(?:[01]\d|2[0-3]):[0-5]\d$/.test(v);

@@ -5,5 +5,5 @@ use Cake\ORM\Entity;
 class Usuario extends Entity
 {
     protected array $_accessible = ['*' => false];
-    protected array $_hidden = ['senha_hash'];
+    protected array $_hidden = ['senha_hash','sessao_computador_hash'];
 }

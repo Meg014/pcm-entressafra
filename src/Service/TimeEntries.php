@@ -89,8 +89,8 @@ final class TimeEntries
                 if ($existing && $reason === '') { throw new \DomainException('Informe o motivo da correção.'); }
                 [$start, $end, $minutes] = self::interval((string)($input['inicio'] ?? ''), (string)($input['fim'] ?? ''));
                 if ($existing && ($start!==$existing->inicio->format('Y-m-d H:i:s') || $end!==$existing->fim->format('Y-m-d H:i:s'))) { Access::admin($user); }
-                $description = trim((string)($input['descricao'] ?? ''));
-                if ($description === '' || mb_strlen($description) > 10000) { throw new \DomainException('Informe o serviço realizado, com até 10.000 caracteres.'); }
+                $description = $input['descricao'] ?? null;
+                if (!is_string($description) || trim($description) === '' || mb_strlen($description) > 10000) { throw new \DomainException('Informe o serviço realizado, com até 10.000 caracteres.'); }
                 if ($existing) {
                     // A correção preserva a identidade histórica do funcionário e da O.S.
                     $employee = ['chave' => $existing->funcionario_chave, 'nome' => $existing->funcionario_nome, 'matricula' => $existing->funcionario_matricula, 'filial' => $existing->funcionario_filial, 'vinculo' => $existing->funcionario_vinculo];

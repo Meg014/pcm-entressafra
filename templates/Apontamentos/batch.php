@@ -24,4 +24,5 @@ if (!is_array($lines) || !$lines) { $lines=[[]]; }
 </section>
 <template id="entry-template"><?= $this->element('batch_entry',['index'=>'__INDEX__','line'=>[],'error'=>'']) ?></template>
 <?= $this->Html->script('employee-autocomplete.js?v='.filemtime(WWW_ROOT.'js/employee-autocomplete.js'),['block'=>true]) ?>
+<?= $this->Html->script('service-autocomplete.js?v='.filemtime(WWW_ROOT.'js/service-autocomplete.js'),['block'=>true]) ?>
 <?= $this->Html->script('apontamentos-batch.js?v='.filemtime(WWW_ROOT.'js/apontamentos-batch.js'),['block'=>true]) ?>

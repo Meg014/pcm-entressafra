@@ -4,7 +4,7 @@ $action = $this->request->getParam('action');
 $canPcm = !empty($currentUser) && in_array($currentUser->perfil,['ADMIN_PCM','PCM'],true);
 $computer=\App\Service\Access::operational($currentUser??null);
 $administrative = $canPcm ? ['Entressafras'=>'Entressafras','Setores'=>'Setores','Cadernos'=>'Cadernos'] : [];
-if (!empty($currentUser) && $currentUser->perfil==='ADMIN_PCM') { $administrative['OsSemCaderno']='O.S. sem Caderno';$administrative['Usuarios']='Usuários e permissões'; }
+if (!empty($currentUser) && $currentUser->perfil==='ADMIN_PCM') { $administrative['OsSemCaderno']='O.S. sem Caderno';$administrative['Usuarios']='Usuários e permissões';$administrative['ServicosSugeridos']='Serviços sugeridos'; }
 if ($canPcm) { $administrative['Atividades']='Todas as atividades / O.S.'; }
 ?>
 <!DOCTYPE html>
