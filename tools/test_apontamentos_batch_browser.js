@@ -3,6 +3,12 @@
 const results=[];const check=(v,m)=>{if(!v)throw Error(m);results.push(m);};
 try{
 const lines=document.getElementById('entry-lines'),add=document.getElementById('add-entry');
+const orderRoot=document.getElementById('os-autocomplete'),save=document.getElementById('entry-save');
+check(save.disabled,'Salvar bloqueado sem O.S. selecionada');
+orderRoot.dispatchEvent(new CustomEvent('pcm-entry-order',{detail:{percentual_atual:85,liberada_apontamento:false}}));
+check(save.disabled&&document.getElementById('entry-order-status').textContent.includes('85%'),'85% visível e bloqueado');
+orderRoot.dispatchEvent(new CustomEvent('pcm-entry-order',{detail:{percentual_atual:100,liberada_apontamento:true}}));
+check(!save.disabled,'100% libera salvamento');
 check(lines.children.length===1,'Começa com uma linha');
 const first=lines.firstElementChild,fields=first.querySelectorAll('[data-mask]');
 check(add.textContent.trim()==='+','Adicionar usa apenas +');

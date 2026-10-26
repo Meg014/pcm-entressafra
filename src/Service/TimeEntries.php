@@ -74,6 +74,14 @@ final class TimeEntries
                 if(!$existing && $activity->disponivel_totvs!==true) { throw new \DomainException('O.S. não está disponível para novo apontamento. Solicite a sincronização pelo PCM; o histórico permanece preservado.'); }
                 $notebook = $activity->caderno_id ? Access::table('Cadernos')->get($activity->caderno_id) : null;
                 Access::activity($user,$activity);
+                if (!$existing) {
+                    PeriodoContexto::writable((int)$activity->entressafra_id);
+                    // Same lock used by evolution updates: completion cannot change during this save.
+                    if ($table->getConnection()->getDriver() instanceof \Cake\Database\Driver\Postgres) {
+                        $table->getConnection()->execute('SELECT id FROM entressafras WHERE id = ? FOR UPDATE',[(int)$activity->entressafra_id]);
+                    }
+                    if (!OrderCompletion::status((int)$activity->id)['liberada_apontamento']) { throw new \DomainException(OrderCompletion::MESSAGE); }
+                }
                 if (!$existing && ($activity->setor_executante_id===null || $activity->identificacao_setor!=='area_totvs')) { throw new \DomainException('Setor executante da O.S. pendente de identificação pelo PCM.'); }
                 if (!$existing) {
                     foreach(['entressafra_id'=>$activity->entressafra_id,'setor_id'=>$activity->setor_executante_id,'caderno_id'=>$notebook?->id] as $field=>$expected) {
@@ -85,6 +93,7 @@ final class TimeEntries
                 $reason = trim((string)($input['motivo'] ?? ''));
                 if ($existing && $reason === '') { throw new \DomainException('Informe o motivo da correção.'); }
                 [$start, $end, $minutes] = self::interval((string)($input['inicio'] ?? ''), (string)($input['fim'] ?? ''));
+                if ($existing && ($start!==$existing->inicio->format('Y-m-d H:i:s') || $end!==$existing->fim->format('Y-m-d H:i:s'))) { Access::admin($user); }
                 $description = trim((string)($input['descricao'] ?? ''));
                 if ($description === '' || mb_strlen($description) > 10000) { throw new \DomainException('Informe o serviço realizado, com até 10.000 caracteres.'); }
                 if ($existing) {

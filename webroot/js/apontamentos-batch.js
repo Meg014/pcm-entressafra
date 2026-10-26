@@ -1,6 +1,15 @@
 'use strict';
 (() => {
  const form=document.getElementById('batch-form'); if(!form)return;
+ const orderStatus=document.getElementById('entry-order-status'),save=document.getElementById('entry-save');
+ const setOrder=order=>{
+  const allowed=order?.liberada_apontamento===true&&Number(order.percentual_atual)===100;
+  save.disabled=!allowed;orderStatus.hidden=!order;
+  orderStatus.className='mb-3 alert '+(allowed?'alert-success':'alert-warning');
+  orderStatus.textContent=order?'Percentual atual da O.S.: '+Number(order.percentual_atual??0).toLocaleString('pt-BR')+'% · '+(allowed?'Liberada para apontamento.':'Ainda não liberada. Os apontamentos só podem ser lançados quando a O.S. estiver com 100% de evolução.'):'';
+ };
+ document.getElementById('os-autocomplete').addEventListener('pcm-entry-order',event=>setOrder(event.detail));
+ setOrder(JSON.parse(orderStatus.dataset.order||'null'));
  const lines=document.getElementById('entry-lines'); let serial=lines.children.length;
  const number=()=>{document.getElementById('entry-count').value=lines.children.length;[...lines.children].forEach((row,i)=>{row.querySelector('.entry-number span').textContent=i+1;});};
  const init=row=>{
@@ -37,7 +46,8 @@
  };
  [...lines.children].forEach(init);
  document.getElementById('add-entry').addEventListener('click',add);
- form.addEventListener('submit',()=>{
+ form.addEventListener('submit',event=>{
+  if(save.disabled){event.preventDefault();return;}
   // Reindex after removals, so the server can attribute errors to visible lines.
   [...lines.children].forEach((row,i)=>row.querySelectorAll('[name]').forEach(f=>{f.name=f.name.replace(/^apontamentos\[[^\]]+\]/,'apontamentos['+i+']');}));
  });

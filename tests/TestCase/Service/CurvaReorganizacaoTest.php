@@ -249,6 +249,7 @@ class CurvaReorganizacaoTest extends TestCase
     {
         $a=$this->local(1);$t=Access::table('Entressafras');$other=(int)$t->saveOrFail($t->newEntity(['nome'=>'Outra entressafra','data_inicio'=>'2026-10-01','data_fim'=>'2027-04-10','status'=>'planejamento']))->id;$b=$this->local(2,null,'ELETRI',$other);
         $gateway=$this->createMock(GatewayInterface::class);$gateway->method('employee')->willReturn(['chave'=>'000001','nome'=>'Pessoa','matricula'=>'000001','filial'=>'01','vinculo'=>'validado','ativo'=>true]);$s=new TimeEntries($gateway);
+        foreach([$a,$b] as $activityId)\App\Test\Support\CompletedOrder::set($activityId,$this->admin);
         $save=fn($id,$from,$to)=>$s->save($this->admin,['atividade_id'=>$id,'funcionario_chave'=>'000001','inicio'=>$from,'fim'=>$to,'descricao'=>'Execução histórica']);
         $save($a,'2026-10-01T07:00','2026-10-01T09:00');$save($b,'2026-10-01T10:00','2026-10-01T12:00');
         $conflicts=$s->conflicts('000001','2026-10-01 11:00:00','2026-10-01 14:00:00');$this->assertCount(2,$conflicts);

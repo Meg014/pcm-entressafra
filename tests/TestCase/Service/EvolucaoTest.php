@@ -201,6 +201,7 @@ class EvolucaoTest extends TestCase
     }
     public function testFullDatetimesDifferentDaysConsecutiveAndOver24Hours(): void
     {
+        \App\Test\Support\CompletedOrder::set($this->activities[0],$this->admin);
         $entries=new TimeEntries(new FakeTotvs());
         $base=['atividade_id'=>$this->activities[0],'funcionario_chave'=>'pessoa-1','descricao'=>'Serviço de teste'];
         foreach(['2026-10-01','2026-10-02'] as $d){$entries->save($this->admin,$base+['inicio'=>$d.'T07:00','fim'=>$d.'T09:00']);}

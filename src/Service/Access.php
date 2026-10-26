@@ -55,9 +55,11 @@ final class Access
     }
     public static function entity(\Cake\ORM\Table $table, array $data): \Cake\Datasource\EntityInterface
     { return $table->newEntity($data, ['accessibleFields' => ['*' => true]]); }
-    public static function audit($user, string $action, ?int $id, ?array $before, array $after, ?string $reason): void
+    public static function audit($user, string $action, ?int $id, ?array $before, array $after, ?string $reason, ?int $insumoId = null): void
     {
         $table = self::table('Auditorias');
-        $table->saveOrFail(self::entity($table, ['apontamento_id' => $id, 'usuario_id' => $user->id, 'usuario_nome' => $user->nome, 'acao' => $action, 'motivo' => $reason, 'antes' => $before === null ? null : json_encode($before, JSON_THROW_ON_ERROR), 'depois' => json_encode($after, JSON_THROW_ON_ERROR), 'created' => gmdate('Y-m-d H:i:s')]));
+        $data=['apontamento_id' => $id, 'usuario_id' => $user->id, 'usuario_nome' => $user->nome, 'acao' => $action, 'motivo' => $reason, 'antes' => $before === null ? null : json_encode($before, JSON_THROW_ON_ERROR), 'depois' => json_encode($after, JSON_THROW_ON_ERROR), 'created' => gmdate('Y-m-d H:i:s')];
+        if($insumoId!==null)$data['insumo_id']=$insumoId;
+        $table->saveOrFail(self::entity($table,$data));
     }
 }

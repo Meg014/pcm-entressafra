@@ -39,7 +39,7 @@ class CalendariosOrdensTest extends TestCase
         $service=new Evolucao();
         [$reference,$week]=(new OperacaoRapida())->reference($this->season);
         $this->assertNull($week);
-        $this->assertGreaterThan(0,$this->entries->save($this->computer,['atividade_id'=>$id,'funcionario_chave'=>'pessoa-1','data_servico'=>'01/10/2026','hora_inicial'=>'07:00','hora_final'=>'09:00','descricao'=>'Sem calendário ou caderno']));
+        try{$this->entries->save($this->computer,['atividade_id'=>$id,'funcionario_chave'=>'pessoa-1','data_servico'=>'01/10/2026','hora_inicial'=>'07:00','hora_final'=>'09:00','descricao'=>'Sem calendário ou caderno']);$this->fail();}catch(\DomainException $e){$this->assertSame(\App\Service\OrderCompletion::MESSAGE,$e->getMessage());}
         $service->saveBatch($this->computer,$this->season,$reference,[['atividade_id'=>$id,'percentual'=>60,'revisao'=>0]],bin2hex(random_bytes(16)));
         $this->assertSame(60.0,$service->state($id,$reference)['percentual']);
         $this->assertCount(1,Access::table('EvolucaoSemanas')->find()->all());
@@ -99,10 +99,11 @@ class CalendariosOrdensTest extends TestCase
         $s=new Activities(new FakeTotvs());$id=$s->identify($this->computer,'nova-os');$a=Access::table('Atividades')->get($id);
         $this->assertNull($a->caderno_id);$this->assertSame($this->season,(int)$a->entressafra_id);$this->assertSame($this->sectors[0],(int)$a->setor_executante_id);
         $this->assertSame($id,$s->identify($this->admin,'nova-os'));
+        \App\Test\Support\CompletedOrder::set($id,$this->admin);
         $entry=$this->entries->save($this->computer,['atividade_id'=>$id,'funcionario_chave'=>'pessoa-1','data_servico'=>'22/10/2026','hora_inicial'=>'07:00','hora_final'=>'09:00','descricao'=>'Execução sem caderno']);
         $this->assertGreaterThan(0,$entry);$snapshot=json_decode(Access::table('Apontamentos')->get($entry)->snapshot,true);$this->assertSame('Sem caderno',$snapshot['caderno_nome']);
-        $ref=(new OperacaoRapida())->reference($this->season)[0];(new Evolucao())->saveBatch($this->computer,$this->season,$ref,[['atividade_id'=>$id,'percentual'=>30,'revisao'=>0]],bin2hex(random_bytes(16)));
-        $this->assertSame(30.0,(new Evolucao())->state($id,$ref)['percentual']);
+        $ref=(new OperacaoRapida())->reference($this->season)[0];(new Evolucao())->saveBatch($this->computer,$this->season,$ref,[['atividade_id'=>$id,'percentual'=>100,'revisao'=>0]],bin2hex(random_bytes(16)));
+        $this->assertSame(100.0,(new Evolucao())->state($id,$ref)['percentual']);
         $this->assertCount(3,(new Evolucao())->activities($this->season));
         $this->auth($this->admin);foreach(['/atividades','/atividades/view/'.$id,'/apontamentos','/lancar-porcentagem?entressafra_id='.$this->season] as $path){$this->get($path);$this->assertResponseOk();}
     }

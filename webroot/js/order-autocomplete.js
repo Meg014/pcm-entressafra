@@ -14,6 +14,7 @@
     cancel(); key.value = ''; input.value = ''; summary.textContent = ''; summary.hidden = true; list.replaceChildren();
     message.dataset.lookupError='0';
     input.setCustomValidity(''); message.textContent = 'Digite pelo menos 2 caracteres para pesquisar.';
+    if(root.dataset.completion==='1')root.dispatchEvent(new CustomEvent('pcm-entry-order',{detail:null}));
     if(root.dataset.progress==='1')window.dispatchEvent(new CustomEvent('pcm-order-selected',{detail:null}));
   };
   const choose = async order => {
@@ -27,9 +28,11 @@
     summary.textContent = identification(order);
     summary.setAttribute('style', 'white-space: pre-line');
     summary.hidden = false; message.dataset.lookupError='0'; input.setCustomValidity(''); message.textContent = 'O.S. selecionada e identificada. Confira os dados antes de salvar.'; input.focus();
+    if(root.dataset.completion==='1')root.dispatchEvent(new CustomEvent('pcm-entry-order',{detail:order}));
     if(root.dataset.progress==='1')window.dispatchEvent(new CustomEvent('pcm-order-selected',{detail:order}));
   };
   input.addEventListener('input', () => {
+    if(root.dataset.completion==='1')root.dispatchEvent(new CustomEvent('pcm-entry-order',{detail:null}));
     message.dataset.lookupError='0';
     cancel(); const current = version; key.value = ''; summary.textContent = ''; summary.hidden = true; input.setCustomValidity(''); list.replaceChildren();
     const term = input.value.trim();

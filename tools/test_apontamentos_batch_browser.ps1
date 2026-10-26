@@ -1,16 +1,16 @@
-param([string]$Browser='C:\Program Files\Google\Chrome\Application\chrome.exe')
+param([string]$Browser='C:\Program Files\Google\Chrome\Application\chrome.exe',[string]$Preview='batch-preview.html',[string]$TestScript='test_apontamentos_batch_browser.js')
 $ErrorActionPreference='Stop'
 $project=Split-Path $PSScriptRoot -Parent
-$preview=Join-Path $project 'tmp/batch-preview.html'
+$preview=Join-Path $project ('tmp/'+$Preview)
 if(!(Test-Path -LiteralPath $preview)){throw 'Gere a prévia: $env:BATCH_PREVIEW=1; php vendor/phpunit/phpunit/phpunit --filter testBatchFormAndSingleSubmission'}
 $html=[IO.File]::ReadAllText($preview)
 $webroot=([uri](Join-Path $project 'webroot/')).AbsoluteUri
-$html=$html.Replace('src="/js/', 'src="'+$webroot+'js/').Replace('href="/css/', 'href="'+$webroot+'css/')
+$html=$html.Replace('src="/js/', 'src="'+$webroot+'js/').Replace('href="/css/', 'href="'+$webroot+'css/').Replace('src="/img/', 'src="'+$webroot+'img/')
 $mock=@"
-<script>window.errors=[];window.addEventListener('error',e=>window.errors.push(e.message));window.fetch=async()=>({ok:true,redirected:false,json:async()=>({results:[{chave:'0001',nome:'Funcionário de teste',matricula:'0001',situacao:'NORMAL',ativo:true},{chave:'0002',nome:'Bloqueado',matricula:'0002',situacao:'FÉRIAS',ativo:false}]})});</script>
+<script>window.errors=[];window.addEventListener('error',e=>window.errors.push(e.message));window.fetch=async()=>({ok:true,redirected:false,json:async()=>({results:[{chave:'0001',nome:'Funcionario de teste',matricula:'0001',situacao:'NORMAL',ativo:true},{chave:'0002',nome:'Bloqueado',matricula:'0002',situacao:'FERIAS',ativo:false}]})});</script>
 "@
 $html=$html.Replace('</head>',$mock+'</head>')
-$test=[IO.File]::ReadAllText((Join-Path $PSScriptRoot 'test_apontamentos_batch_browser.js'))
+$test=[IO.File]::ReadAllText((Join-Path $PSScriptRoot $TestScript))
 $html=$html.Replace('</body>','<script>'+$test+'</script></body>')
 $page=Join-Path $project 'tmp/batch-browser-test.html'
 [IO.File]::WriteAllText($page,$html,[Text.UTF8Encoding]::new($false))

@@ -24,6 +24,7 @@ class OperacionalController extends OperacaoController
         $key=(string)($this->request->getData('chave')??bin2hex(random_bytes(16)));$ajax=$this->request->getHeaderLine('X-Requested-With')==='XMLHttpRequest';
         try{
             if(!is_string($search))throw new \DomainException('Pesquisa inválida.');
+            $search=trim($search);if($search!=='')$area=0;
             if($this->request->is('post')){
                 if($this->request->getData('atividade_id')!==null)throw new \DomainException('Use o lançamento em lote. O lançamento individual foi encerrado.');
                 $json=$this->request->getData('alteracoes_json','[]');

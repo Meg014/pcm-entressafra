@@ -5,6 +5,8 @@ use Cake\Routing\RouteBuilder;
 return function (RouteBuilder $routes): void {
     $routes->setRouteClass(DashedRoute::class);
     $routes->scope('/', function (RouteBuilder $builder): void {
+        $builder->connect('/insumos',['controller'=>'Insumos','action'=>'index'])->setMethods(['GET']);
+        $builder->connect('/insumos/add',['controller'=>'Insumos','action'=>'add'])->setMethods(['GET','POST']);
         $builder->connect('/os-sem-caderno',['controller'=>'OsSemCaderno','action'=>'index'])->setMethods(['GET','POST']);
         $builder->connect('/escolher-entressafra',['controller'=>'Periodos','action'=>'index'])->setMethods(['GET']);
         $builder->connect('/escolher-entressafra/entrar',['controller'=>'Periodos','action'=>'selecionar'])->setMethods(['POST']);

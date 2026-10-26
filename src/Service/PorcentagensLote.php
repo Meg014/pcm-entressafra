@@ -8,8 +8,9 @@ final class PorcentagensLote
     private function scope($user,int $season,int $area)
     {
         PeriodoContexto::season($season);
+        $areas=$area?[$area]:array_keys($this->areas($user,$season));
         return Access::activityScope(Access::table('Atividades')->find(),$user)
-            ->innerJoinWith('Cadernos',fn($q)=>$q->where(['Cadernos.entressafra_id'=>$season,'Cadernos.area_curva_id'=>$area]))
+            ->innerJoinWith('Cadernos',fn($q)=>$q->where(['Cadernos.entressafra_id'=>$season,'Cadernos.area_curva_id IN'=>$areas?:[-1]]))
             ->where(['Atividades.entressafra_id'=>$season]);
     }
     public function areas($user,int $season): array
@@ -24,9 +25,10 @@ final class PorcentagensLote
     public function page($user,int $season,int $area,string $search,int $page): array
     {
         if($search!==''&&!preg_match('/^[0-9]{1,6}$/D',$search))throw new \DomainException('Pesquise até seis dígitos do número da O.S.');
+        if($search!=='')$area=0;
         $areas=$this->areas($user,$season);if($area&&!array_key_exists($area,$areas))throw new \Cake\Http\Exception\ForbiddenException('Setor da Curva S não autorizado nesta entressafra.');
         $rows=[];$total=0;$pages=1;$page=max(1,$page);$reference=null;
-        if($area){
+        if($area || $search!==''){
             [$reference]=(new OperacaoRapida())->reference($season);
             $q=$this->scope($user,$season,$area);if($search!=='')$q->where(['Atividades.os_numero LIKE'=>'%'.$search.'%']);
             $total=$q->count();$pages=max(1,(int)ceil($total/50));$page=min($page,$pages);$s=new Evolucao();$s->loadHistory($season);
@@ -44,7 +46,7 @@ final class PorcentagensLote
     public function save(int $actor,int $season,int $area,array $rows,string $key): array
     {
         PeriodoContexto::writable($season);$user=Access::actor($actor);
-        if(!array_key_exists($area,$this->areas($user,$season)))throw new \Cake\Http\Exception\ForbiddenException('Setor da Curva S não autorizado.');
+        if($area!==0&&!array_key_exists($area,$this->areas($user,$season)))throw new \Cake\Http\Exception\ForbiddenException('Setor da Curva S não autorizado.');
         if(!preg_match('/^[a-zA-Z0-9-]{16,64}$/D',$key)||count($rows)>10000)throw new \DomainException('Lote inválido.');
         $clean=[];foreach($rows as $r){
             if(!is_array($r))throw new \DomainException('Alteração inválida.');

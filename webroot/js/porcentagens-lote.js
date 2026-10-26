@@ -2,7 +2,8 @@
   const root = document.getElementById('porcentagens-lote');
   if (!root) return;
   const filters = document.getElementById('porcentagens-filtros');
-  filters.elements.area_id.addEventListener('change', () => filters.requestSubmit());
+  filters.elements.area_id.addEventListener('change', () => {filters.elements.os.value='';filters.requestSubmit();});
+  filters.elements.os.addEventListener('input', () => {if(filters.elements.os.value.trim())filters.elements.area_id.value='';});
   const form = document.getElementById('porcentagens-form');
   if (!form) return;
   const storageKey = root.dataset.storage;

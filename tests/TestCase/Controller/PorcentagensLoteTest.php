@@ -28,12 +28,34 @@ class PorcentagensLoteTest extends TestCase
     {
         $s=new PorcentagensLote();$admin=Access::actor($this->admin);$one=$s->page($admin,$this->season,$this->areas[0],'',1);$six=$s->page($admin,$this->season,$this->areas[0],'',6);
         $this->assertSame(260,$one['total']);$this->assertCount(50,$one['rows']);$this->assertCount(10,$six['rows']);$this->assertSame('006000',$one['rows'][0]['numero']);$this->assertSame('006002',$one['rows'][2]['numero']);
-        $this->assertSame(1,$s->page($admin,$this->season,$this->areas[0],'006025',1)['total']);$this->assertSame(0,$s->page($admin,$this->season,$this->areas[0],'006260',1)['total']);
+        $this->assertSame(1,$s->page($admin,$this->season,$this->areas[0],'006025',1)['total']);$this->assertSame(1,$s->page($admin,$this->season,$this->areas[0],'006260',1)['total']);
         $this->get('/lancar-porcentagem?area_id='.$this->areas[0]);$this->assertResponseOk();$this->assertResponseContains('Atividade específica 006000');
         $dom=new \DOMDocument();@$dom->loadHTML((string)$this->_response->getBody());$xp=new \DOMXPath($dom);$this->assertSame(4,$xp->query('//main//table/thead/tr/th')->length);$this->assertSame(50,$xp->query('//*[@data-percentage]')->length);
         $this->assertSame(1,$xp->query('//button[@id="porcentagens-salvar"]')->length);
         foreach(['setor_id','caderno_id','referencia','observacoes','motivo'] as $field)$this->assertSame(0,$xp->query('//*[@name="'.$field.'"]')->length);
         $this->assertResponseNotContains('Sem atualização na semana');$this->assertResponseNotContains('Lançamento em lote');
+    }
+    public function testNumberSearchWithoutSectorAndWithDifferentSectorCanSave(): void
+    {
+        $s=new PorcentagensLote();$admin=Access::actor($this->admin);
+        $this->assertSame(0,$s->page($admin,$this->season,0,'',1)['total']);
+        foreach([0,$this->areas[0]] as $area){
+            $page=$s->page($admin,$this->season,$area,'006260',1);
+            $this->assertSame(1,$page['total']);$this->assertSame($this->ids[260],$page['rows'][0]['id']);
+            $this->get('/lancar-porcentagem?area_id='.$area.'&os=006260');$this->assertResponseOk();
+            $this->assertResponseContains('Atividade específica 006260');$this->assertResponseContains('id="porcentagens-salvar"');
+            $html=(string)$this->_response->getBody();$this->assertLessThan(strpos($html,'name="area_id"'),strpos($html,'name="os"'));
+        }
+        $this->post('/lancar-porcentagem?area_id='.$this->areas[0].'&os=006260',['chave'=>bin2hex(random_bytes(16)),'alteracoes_json'=>json_encode([$this->row(260,30)])]);
+        $this->assertRedirect();$this->assertSame(30.0,(new Evolucao())->state($this->ids[260],$this->reference)['percentual']);
+    }
+    public function testNumberSearchNeverBypassesExecutorPermissions(): void
+    {
+        $s=new PorcentagensLote();$user=Access::actor($this->responsible);
+        $this->assertSame(0,$s->page($user,$this->season,0,'006001',1)['total']);
+        $this->assertSame(1,$s->page($user,$this->season,0,'006000',1)['total']);
+        try{$s->save($this->responsible,$this->season,0,[$this->row(1,10)],bin2hex(random_bytes(16)));$this->fail('Unauthorized O.S. accepted');}
+        catch(\DomainException){$this->assertSame(0,Access::table('EvolucaoRegistros')->find()->count());}
     }
     public function testAtomicSaveMoreThanTwoHundredAndIdempotency(): void
     {

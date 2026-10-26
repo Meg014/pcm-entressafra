@@ -28,7 +28,7 @@ class OperacaoSimplificadaTest extends TestCase
     }
     private function auth(int $id): void {$u=Access::actor($id);$this->session(['Periodo'=>['id'=>$this->season,'usuario_id'=>$id],'Auth'=>['id'=>$id,'stamp'=>hash('sha256',$u->senha_hash),'last'=>time()]]);}
     private function entry(int $index=0,string $start='2026-10-01T07:00',string $end='2026-10-01T09:00'): int
-    {return $this->entries->save($this->admin,['atividade_id'=>$this->activities[$index],'funcionario_chave'=>'pessoa-1','inicio'=>$start,'fim'=>$end,'descricao'=>'Serviço de teste']);}
+    {\App\Test\Support\CompletedOrder::set($this->activities[$index],$this->admin);return $this->entries->save($this->admin,['atividade_id'=>$this->activities[$index],'funcionario_chave'=>'pessoa-1','inicio'=>$start,'fim'=>$end,'descricao'=>'Serviço de teste']);}
     private function select(int $id): array {return ['id'=>$id,'revisao'=>Access::table('Apontamentos')->get($id)->revisao_pcm];}
     public function testComputerOnlyHasOperationalRoutesAndExistingUsersAreNotConverted(): void
     {
@@ -51,6 +51,7 @@ class OperacaoSimplificadaTest extends TestCase
     }
     public function testComputerCanSaveValidEntryAndLookupEmployeeButCannotConfirm(): void
     {
+        \App\Test\Support\CompletedOrder::set($this->activities[0],$this->admin);
         $this->auth($this->computer);$this->enableCsrfToken();
         $this->get('/apontamentos/funcionarios?q=Maria');$this->assertResponseOk();$this->assertResponseContains('0001');
         $this->post('/apontamentos/add',['atividade_id'=>$this->activities[0],'funcionario_chave'=>'pessoa-1','inicio'=>'2026-10-01T07:00','fim'=>'2026-10-01T09:00','descricao'=>'Teste operacional']);$this->assertRedirect('/apontamentos/add');
@@ -69,7 +70,7 @@ class OperacaoSimplificadaTest extends TestCase
         $a=$this->entry(1);$b=$this->entry(0,'2026-09-01T07:00','2026-09-01T08:00');
         Access::table('Apontamentos')->updateAll(['created'=>'2026-10-01 10:00:00'],['id'=>$a]);Access::table('Apontamentos')->updateAll(['created'=>'2026-10-01 11:00:00'],['id'=>$b]);
         $q=(new FilaPcm())->queue(Access::actor($this->admin));$this->assertSame($this->activities[1],(int)$q[0]['id']);$this->assertSame(120,(int)$q[0]['minutos']);$this->assertCount(2,$q);
-        $this->get('/fila-pcm');$this->assertResponseOk();$this->assertResponseContains('Ver apontamentos');
+        $this->get('/fila-pcm');$this->assertResponseOk();$this->assertResponseContains('Ver registros');
     }
     public function testMultipleConfirmationsLeaveQueueAndOnlyNewEntryReturns(): void
     {

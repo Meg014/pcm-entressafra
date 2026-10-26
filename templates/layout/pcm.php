@@ -43,6 +43,7 @@ if ($canPcm) { $administrative['Atividades']='Todas as atividades / O.S.'; }
         <?php if(!empty($currentUser)): ?>
         <?php if($canPcm): ?><?= $this->Html->link('Apontamentos recebidos',['controller'=>'FilaPcm','action'=>'index'],['class'=>'nav-item'.($controller==='FilaPcm'?' selected':''),'aria-current'=>$controller==='FilaPcm'?'page':'false']) ?><?php endif; ?>
         <?= $this->Html->link('Novo apontamento',['controller'=>'Apontamentos','action'=>'add'],['class'=>'nav-item'.($controller==='Apontamentos'&&$action==='add'?' selected':''),'aria-current'=>$controller==='Apontamentos'&&$action==='add'?'page':'false']) ?>
+        <?= $this->Html->link('Insumos',['controller'=>'Insumos','action'=>'add'],['class'=>'nav-item'.($controller==='Insumos'?' selected':''),'aria-current'=>$controller==='Insumos'?'page':'false']) ?>
         <?= $this->Html->link('Lançar porcentagem',['controller'=>'Operacional','action'=>'porcentagem'],['class'=>'nav-item'.($controller==='Operacional'?' selected':''),'aria-current'=>$controller==='Operacional'?'page':'false']) ?>
         <?php endif; ?>
         <?php foreach (!empty($currentUser) && !$canPcm ? ($computer?['Apontamentos'=>'Histórico de apontamentos']:['Dashboard' => 'Visão geral', 'Atividades' => 'Atividades / O.S.', 'Apontamentos' => 'Apontamentos']) : [] as $name => $label): ?>

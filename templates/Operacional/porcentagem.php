@@ -3,10 +3,11 @@
 <div class="page-heading"><h1>Lançar evolução das O.S.</h1></div>
 <section class="panel" id="porcentagens-lote" data-storage="pcm-percentuais-u<?= h($currentUser->id) ?>-p<?= h($season) ?>-a<?= h($area) ?>" data-reference="<?= h($batch['reference']) ?>">
 <?= $this->Form->create(null,['type'=>'get','id'=>'porcentagens-filtros','class'=>'row g-3 mb-3']) ?>
-<div class="col-md-6"><?= $this->Form->control('area_id',['label'=>'Setor da Curva S','options'=>$batch['areas'],'empty'=>'Selecione o setor','value'=>$area,'class'=>'form-select']) ?></div>
-<div class="col-md-6"><?= $this->Form->control('os',['label'=>'Pesquisar O.S.','value'=>$search,'placeholder'=>'Número da O.S.','maxlength'=>6,'class'=>'form-control','inputmode'=>'numeric']) ?></div>
+<div class="col-md-5"><?= $this->Form->control('os',['label'=>'Pesquisar O.S.','value'=>$search,'placeholder'=>'Número da O.S.','maxlength'=>6,'class'=>'form-control','inputmode'=>'numeric']) ?></div>
+<div class="col-md-5"><?= $this->Form->control('area_id',['label'=>'Setor da Curva S','options'=>$batch['areas'],'empty'=>'Selecione o setor','value'=>$area,'class'=>'form-select']) ?></div>
+<div class="col-md-2 d-flex align-items-end"><?= $this->Form->button('Pesquisar',['class'=>'btn btn-outline-primary']) ?></div>
 <?= $this->Form->end() ?>
-<?php if($area): ?>
+<?php if($area || $search!==''): ?>
 <p><?= h($batch['total']) ?> O.S. · <span id="porcentagens-pendentes" role="status">Nenhuma alteração pendente.</span></p>
 <p id="porcentagens-erro" role="alert"></p>
 <?= $this->Form->create(null,['id'=>'porcentagens-form','data-key'=>$key,'data-pending'=>json_encode($pending,JSON_THROW_ON_ERROR)]) ?>

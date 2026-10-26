@@ -15,8 +15,8 @@ $posted=$this->request->getData();$values=['data_servico'=>$start?->format('d/m/
 foreach($values as $field=>$value){if(array_key_exists($field,$posted))$values[$field]=is_scalar($posted[$field])?(string)$posted[$field]:'';}
 ?>
 <div class="row g-3 mb-3">
-<div class="col-12"><?= $this->Form->control('data_servico',['label'=>'Data do serviço *','type'=>'text','value'=>$values['data_servico'],'placeholder'=>'DD/MM/AAAA','maxlength'=>10,'inputmode'=>'numeric','autocomplete'=>'off','class'=>'form-control','required'=>true,'data-time-mask'=>'date']) ?></div>
-<?php foreach(['hora_inicial'=>'Hora inicial *','hora_final'=>'Hora final *'] as $field=>$label): ?><div class="col-md-6"><?= $this->Form->control($field,['label'=>$label,'type'=>'text','value'=>$values[$field],'placeholder'=>'HH:MM','maxlength'=>5,'inputmode'=>'numeric','autocomplete'=>'off','class'=>'form-control','required'=>true,'data-time-mask'=>'time']) ?></div><?php endforeach; ?>
+<div class="col-12"><?= $this->Form->control('data_servico',['label'=>'Data do serviço *','type'=>'text','value'=>$values['data_servico'],'placeholder'=>'DD/MM/AAAA','maxlength'=>10,'inputmode'=>'numeric','autocomplete'=>'off','class'=>'form-control','required'=>true,'readonly'=>$row&&$currentUser->perfil!=='ADMIN_PCM','data-time-mask'=>'date']) ?></div>
+<?php foreach(['hora_inicial'=>'Hora inicial *','hora_final'=>'Hora final *'] as $field=>$label): ?><div class="col-md-6"><?= $this->Form->control($field,['label'=>$label,'type'=>'text','value'=>$values[$field],'placeholder'=>'HH:MM','maxlength'=>5,'inputmode'=>'numeric','autocomplete'=>'off','class'=>'form-control','required'=>true,'readonly'=>$row&&$currentUser->perfil!=='ADMIN_PCM','data-time-mask'=>'time']) ?></div><?php endforeach; ?>
 
 </div>
 <p id="horas-calculadas" class="text-secondary" aria-live="polite">As horas serão calculadas pelo intervalo informado.</p>

@@ -26,6 +26,8 @@ class EtapaDoisTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
+        Access::table('Auditorias')->deleteAll(['insumo_id IS NOT'=>null]);
+        Access::table('Insumos')->deleteAll([]);
         foreach(['EvolucaoPesos','EvolucaoMetas','EvolucaoRegistros','EvolucaoLotes','EvolucaoVersoes','CalendariosOperacionais','EvolucaoSemanas','VinculosItens','VinculosLotes','Auditorias','Apontamentos','Atividades','UsuariosSetores','Usuarios','Cadernos','Setores','AreasFabrica','Entressafras'] as $alias) { Access::table($alias)->deleteAll([]); }
         $now = gmdate('Y-m-d H:i:s');
         $users = Access::table('Usuarios');
@@ -42,6 +44,7 @@ class EtapaDoisTest extends TestCase
         $service = new Users();
         $this->pcm = $service->save($this->admin, ['nome'=>'PCM teste','login'=>'pcm-teste','senha'=>'Teste-Restrito-2026','perfil'=>'PCM','ativo'=>'1']);
         $this->responsavel = $service->save($this->admin, ['nome'=>'Responsável teste','login'=>'resp-teste','senha'=>'Teste-Restrito-2026','perfil'=>'RESPONSAVEL_SETOR','ativo'=>'1','setores'=>[$this->sectors[0]]]);
+        foreach($this->activities as $activityId)\App\Test\Support\CompletedOrder::set($activityId,$this->admin);
         $this->entries = new TimeEntries(new FakeTotvs());
         // HTTP searches use a source double; production always resolves the real gateway.
         $this->mockService(\App\Integration\Totvs\GatewayInterface::class,function() {
@@ -129,7 +132,7 @@ class EtapaDoisTest extends TestCase
         $this->assertSame('Serviço corrigido',json_decode($audit->depois,true)['descricao']);
         $this->entries->save($this->admin,$this->input('2026-10-21T12:00','2026-10-21T14:00',1));
         $data['fim']='2026-10-21T13:00';
-        $this->expectException(ConflictException::class); $this->entries->save($this->pcm,$data,$id);
+        $this->expectException(ConflictException::class); $this->entries->save($this->admin,$data,$id);
     }
     public function testLogicalCancellationAndControlHistory(): void
     {
@@ -213,6 +216,7 @@ class EtapaDoisTest extends TestCase
     public function testSharedNotebookKeepsGlobalTimeConflictsAndHistoricalSectorSnapshots(): void
     {
         $this->shareNotebook(); $second=(new Activities(new FakeTotvs('A1')))->link($this->admin,$this->notebooks[0],'new-1');
+        \App\Test\Support\CompletedOrder::set($second,$this->admin);
         $first=$this->entries->save($this->admin,$this->input()); $before=Access::table('Apontamentos')->get($first)->toArray();
         $input=$this->input('2026-10-21T09:00','2026-10-21T12:00'); $input['atividade_id']=$second;
         try { $this->entries->save($this->pcm,$input); $this->fail(); } catch (ConflictException) { $this->assertTrue(true); }
@@ -250,7 +254,7 @@ class EtapaDoisTest extends TestCase
             $xpath=new \DOMXPath($document);
             $paths=[]; foreach ($xpath->query('//nav[@aria-label="Navegação principal"]//a') as $link) { $paths[]=$link->getAttribute('href'); }
             $allowed=$role!=='RESPONSAVEL_SETOR';
-            $this->assertSame($allowed?['/fila-pcm','/apontamentos/add','/lancar-porcentagem','/consulta-pcm','/controle-pcm']:['/apontamentos/add','/lancar-porcentagem','/','/atividades','/apontamentos'],$paths);
+            $this->assertSame($allowed?['/fila-pcm','/apontamentos/add','/insumos/add','/lancar-porcentagem','/consulta-pcm','/controle-pcm']:['/apontamentos/add','/insumos/add','/lancar-porcentagem','/','/atividades','/apontamentos'],$paths);
             $paths=[]; foreach ($xpath->query('//details[@id="pcm-user-menu"]//a') as $link) { $paths[]=$link->getAttribute('href'); }
             $expected=$allowed?['/entressafras','/setores','/cadernos']:[];
             if ($role==='ADMIN_PCM') { $expected[]='/os-sem-caderno';$expected[]='/usuarios'; }
@@ -760,5 +764,92 @@ class EtapaDoisTest extends TestCase
         $this->assertSame(0,Access::table('Apontamentos')->find()->count());
         $this->expectException(\DomainException::class);
         $this->entries->saveBatch($this->admin,['atividade_id'=>$this->activities[0],'quantidade_linhas'=>'2','apontamentos'=>[$this->input()]]);
+    }
+    protected function tearDown(): void
+    {
+        Access::table('Auditorias')->deleteAll(['insumo_id IS NOT'=>null]);
+        Access::table('Insumos')->deleteAll([]);
+        parent::tearDown();
+    }
+    public function testCompletionGateRejectsZeroAndPartialIncludingForgedBatch(): void
+    {
+        foreach([0,85,99.99] as $percentage){
+            \App\Test\Support\CompletedOrder::set($this->activities[0],$this->admin,$percentage);
+            $status=\App\Service\OrderCompletion::status($this->activities[0]);$this->assertSame($percentage==0?0.0:(float)$percentage,$status['percentual_atual']);$this->assertFalse($status['liberada_apontamento']);
+            try{$this->entries->save($this->admin,$this->input()+['percentual_atual'=>100,'liberada_apontamento'=>true]);$this->fail();}catch(\DomainException $e){$this->assertSame(\App\Service\OrderCompletion::MESSAGE,$e->getMessage());}
+            try{$this->entries->saveBatch($this->admin,['atividade_id'=>$this->activities[0],'apontamentos'=>[$this->input(),$this->input('2026-10-21T11:00','2026-10-21T12:00')]]);$this->fail();}catch(\App\Service\BatchEntryException $e){$this->assertCount(2,$e->errors);}
+            $this->assertSame(0,Access::table('Apontamentos')->find()->count());
+        }
+    }
+    public function testCompletionIsReturnedByOrderAndShownForRejectedSubmission(): void
+    {
+        $this->mockService(\App\Integration\Totvs\GatewayInterface::class,fn()=>new FakeTotvs());
+        \App\Test\Support\CompletedOrder::set($this->activities[0],$this->admin,85);
+        $service=new \App\Service\OperacaoRapida();$order=$service->result($service->activity(Access::actor($this->admin),$this->activities[0]));
+        $this->assertSame(85.0,$order['percentual_atual']);$this->assertFalse($order['liberada_apontamento']);
+        $this->enableCsrfToken();$data=$this->input();$data['funcionario_rotulo']='Nome preservado';
+        $this->post('/apontamentos/add',['atividade_id'=>$this->activities[0],'apontamentos'=>[$data]]);
+        $this->assertResponseOk();$this->assertResponseContains('100% de evolução');$this->assertResponseContains('Nome preservado');$this->assertResponseContains('Percentual atual da O.S.: 85%');
+        $this->assertSame(0,Access::table('Apontamentos')->find()->count());
+    }
+    public function testOnlyAdminChangesHoursAndAuditKeepsBeforeAndAfter(): void
+    {
+        $id=$this->entries->save($this->admin,$this->input());$data=$this->input()+['motivo'=>'Ajuste de horário'];$data['fim']='2026-10-21T12:00';
+        try{$this->entries->save($this->pcm,$data,$id);$this->fail();}catch(\Cake\Http\Exception\ForbiddenException){$this->assertSame(240,Access::table('Apontamentos')->get($id)->minutos);}
+        $this->authenticate($this->pcm);$this->get('/apontamentos/view/'.$id);$this->assertResponseNotContains('Editar hora');
+        $this->enableCsrfToken();$this->post('/apontamentos/edit/'.$id,$data);$this->assertResponseCode(403);
+        $this->authenticate($this->admin);$this->get('/apontamentos/view/'.$id);$this->assertResponseContains('Editar hora');
+        // Completion may change later; correcting an existing record remains possible.
+        \App\Test\Support\CompletedOrder::set($this->activities[0],$this->admin,85);
+        $this->entries->save($this->admin,$data,$id);$this->assertSame(300,Access::table('Apontamentos')->get($id)->minutos);
+        $audit=Access::table('Auditorias')->find()->where(['apontamento_id'=>$id,'acao'=>'correcao'])->firstOrFail();
+        $this->assertSame($this->admin,(int)$audit->usuario_id);$this->assertSame(240,json_decode($audit->antes,true)['minutos']);$this->assertSame(300,json_decode($audit->depois,true)['minutos']);$this->assertNotNull($audit->created);
+    }
+    private function supply(string $quantity='2,5'): array
+    {
+        return ['funcionario_chave'=>'pessoa-1','funcionario_rotulo'=>'Pessoa selecionada','data'=>'26/10/2026','material'=>'Rolamento','quantidade'=>$quantity];
+    }
+    public function testSuppliesBatchPreservesEmployeeAndQuantityWithAudit(): void
+    {
+        \App\Test\Support\CompletedOrder::set($this->activities[0],$this->admin,0);
+        $a=$this->supply();$b=$this->supply('3');$b['funcionario_chave']='pessoa-2';$b['material']='Parafuso';
+        $ids=(new \App\Service\Insumos(new FakeTotvs()))->saveBatch($this->admin,['atividade_id'=>$this->activities[0],'insumos'=>[$a,$b]]);
+        $this->assertCount(2,$ids);$row=Access::table('Insumos')->get($ids[0]);$this->assertSame(2.5,(float)$row->quantidade);$this->assertSame('2026-10-26',$row->data->format('Y-m-d'));$this->assertSame($this->activities[0],(int)$row->atividade_id);
+        $this->assertSame(2,Access::table('Auditorias')->find()->where(['acao'=>'insumo_criacao'])->count());
+        $this->get('/insumos');$this->assertResponseOk();$this->assertResponseContains('Rolamento');$this->assertResponseContains('Parafuso');
+    }
+    public function testSuppliesInvalidBatchSavesNothingAndKeepsFormValues(): void
+    {
+        $this->mockService(\App\Integration\Totvs\GatewayInterface::class,fn()=>new FakeTotvs());
+        foreach(['0','-1','1.12345','abc'] as $quantity){
+            try{(new \App\Service\Insumos(new FakeTotvs()))->saveBatch($this->admin,['atividade_id'=>$this->activities[0],'insumos'=>[$this->supply(),$this->supply($quantity)]]);$this->fail();}
+            catch(\App\Service\BatchEntryException $e){$this->assertArrayHasKey(1,$e->errors);}
+            $this->assertSame(0,Access::table('Insumos')->find()->count());
+        }
+        $this->enableCsrfToken();$this->post('/insumos/add',['atividade_id'=>$this->activities[0],'insumos'=>[$this->supply(),$this->supply('0')]]);
+        $this->assertResponseOk();$this->assertResponseContains('Rolamento');$this->assertResponseContains('Pessoa selecionada');$this->assertResponseContains('Quantidade deve ser maior que zero');
+        $table=Access::table('Insumos');$calls=0;
+        $listener=function()use(&$calls):void{if(++$calls===2)throw new \RuntimeException('Falha simulada na segunda linha');};
+        $table->getEventManager()->on('Model.beforeSave',$listener);
+        try{(new \App\Service\Insumos(new FakeTotvs()))->saveBatch($this->admin,['atividade_id'=>$this->activities[0],'insumos'=>[$this->supply(),$this->supply()]]);$this->fail();}
+        catch(\RuntimeException $e){$this->assertSame('Falha simulada na segunda linha',$e->getMessage());}
+        finally{$table->getEventManager()->off('Model.beforeSave',$listener);}
+        $this->assertSame(0,$table->find()->count());$this->assertSame(0,Access::table('Auditorias')->find()->where(['acao'=>'insumo_criacao'])->count());
+    }
+    public function testSuppliesPermissionsDatesAndEmployeeAreValidated(): void
+    {
+        $service=new \App\Service\Insumos(new FakeTotvs());
+        try{$service->saveBatch($this->responsavel,['atividade_id'=>$this->activities[1],'insumos'=>[$this->supply()]]);$this->fail();}catch(\Cake\Http\Exception\ForbiddenException){$this->assertSame(0,Access::table('Insumos')->find()->count());}
+        $row=$this->supply();$row['data']='31/02/2026';
+        try{$service->saveBatch($this->admin,['atividade_id'=>$this->activities[0],'insumos'=>[$row]]);$this->fail();}catch(\App\Service\BatchEntryException $e){$this->assertArrayHasKey(0,$e->errors);}
+        $gateway=$this->createMock(\App\Integration\Totvs\GatewayInterface::class);$gateway->method('order')->willReturn((new FakeTotvs())->order('os-0'));$person=(new FakeTotvs())->employee('pessoa-1');$person['ativo']=false;$gateway->method('employee')->willReturn($person);
+        $this->expectException(\App\Service\BatchEntryException::class);(new \App\Service\Insumos($gateway))->saveBatch($this->admin,['atividade_id'=>$this->activities[0],'insumos'=>[$this->supply()]]);
+    }
+    public function testSuppliesHttpFormAndSingleSave(): void
+    {
+        $this->mockService(\App\Integration\Totvs\GatewayInterface::class,fn()=>new FakeTotvs());
+        $this->get('/insumos/add');$this->assertResponseOk();$this->assertResponseContains('Salvar insumos');$this->assertResponseContains('name="insumos[0][funcionario_chave]"');
+        if(getenv('BATCH_PREVIEW'))file_put_contents(TMP.'supplies-preview.html',(string)$this->_response->getBody());
+        $this->enableCsrfToken();$this->post('/insumos/add',['atividade_id'=>$this->activities[0],'quantidade_linhas'=>'1','insumos'=>[$this->supply()]]);$this->assertRedirect('/insumos');$this->assertSame(1,Access::table('Insumos')->find()->count());
     }
 }

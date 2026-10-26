@@ -51,7 +51,7 @@ class AppController extends Controller
         if (\App\Service\Access::operational($user)) {
             $controller=$this->request->getParam('controller');$action=$this->request->getParam('action');
             if($controller==='Dashboard') { $event->setResult($this->redirect(['controller'=>'Apontamentos','action'=>'add']));$event->stopPropagation();return; }
-            $allowed=['Apontamentos'=>['add','index','view','funcionarios','ordens'],'Operacional'=>['ordens','identificar','porcentagem'],'Evolucao'=>['historico'],'Auth'=>['logout']];
+            $allowed=['Insumos'=>['add','index'],'Apontamentos'=>['add','index','view','funcionarios','ordens'],'Operacional'=>['ordens','identificar','porcentagem'],'Evolucao'=>['historico'],'Auth'=>['logout']];
             if(!in_array($action,$allowed[$controller]??[],true)) { throw new \Cake\Http\Exception\ForbiddenException('Conta operacional: acesso limitado a lançamentos e históricos autorizados.'); }
         }
     }

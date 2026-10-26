@@ -58,3 +58,5 @@ ConnectionHelper::addTestAliases();
 // (new SchemaLoader())->loadSqlFiles('./tests/schema.sql', 'test');
 
 (new Migrator())->run();
+// Always inspect the migrated test schema, independently of cached metadata from prior runs.
+\Cake\Datasource\ConnectionManager::get('test')->cacheMetadata(false);
