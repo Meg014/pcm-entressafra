@@ -21,7 +21,10 @@ final class FilaPcm
     public function queue($user,?int $page=null): array
     {
         Access::pcm($user);
-        return $this->db()->execute($this->pendingQuery().' ORDER BY recebido,a.id'.($page===null?'':' LIMIT 10 OFFSET '.((max(1,$page)-1)*10)))->fetchAll('assoc');
+        $rows=$this->db()->execute($this->pendingQuery().' ORDER BY recebido,a.id'.($page===null?'':' LIMIT 10 OFFSET '.((max(1,$page)-1)*10)))->fetchAll('assoc');
+        foreach($rows as &$row)$row+=OrderProgress::status((int)$row['id']);
+        unset($row);
+        return $rows;
     }
     public function queueCount($user): int
     {

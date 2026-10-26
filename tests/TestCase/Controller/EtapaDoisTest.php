@@ -771,28 +771,35 @@ class EtapaDoisTest extends TestCase
         Access::table('Insumos')->deleteAll([]);
         parent::tearDown();
     }
-    public function testCompletionGateRejectsZeroAndPartialIncludingForgedBatch(): void
+    public function testHoursAndSuppliesAllowEveryPercentageWithoutChangingEvolution(): void
     {
-        foreach([0,85,99.99] as $percentage){
+        foreach([0,10,50,99,100] as $index=>$percentage){
             \App\Test\Support\CompletedOrder::set($this->activities[0],$this->admin,$percentage);
-            $status=\App\Service\OrderCompletion::status($this->activities[0]);$this->assertSame($percentage==0?0.0:(float)$percentage,$status['percentual_atual']);$this->assertFalse($status['liberada_apontamento']);
-            try{$this->entries->save($this->admin,$this->input()+['percentual_atual'=>100,'liberada_apontamento'=>true]);$this->fail();}catch(\DomainException $e){$this->assertSame(\App\Service\OrderCompletion::MESSAGE,$e->getMessage());}
-            try{$this->entries->saveBatch($this->admin,['atividade_id'=>$this->activities[0],'apontamentos'=>[$this->input(),$this->input('2026-10-21T11:00','2026-10-21T12:00')]]);$this->fail();}catch(\App\Service\BatchEntryException $e){$this->assertCount(2,$e->errors);}
-            $this->assertSame(0,Access::table('Apontamentos')->find()->count());
+            $before=(new \App\Service\Evolucao())->history($this->activities[0]);
+            $this->assertSame((float)$percentage,\App\Service\OrderProgress::status($this->activities[0])['percentual_atual']);
+            $day='2026-10-'.(21+$index);
+            $this->assertGreaterThan(0,$this->entries->save($this->responsavel,$this->input($day.'T07:00',$day.'T09:00')));
+            $ids=$this->entries->saveBatch($this->admin,['atividade_id'=>$this->activities[0],'apontamentos'=>[$this->input($day.'T09:00',$day.'T10:00'),$this->input($day.'T10:00',$day.'T11:00')]]);
+            $this->assertCount(2,$ids);
+            $this->assertCount(1,(new \App\Service\Insumos(new FakeTotvs()))->saveBatch($this->admin,['atividade_id'=>$this->activities[0],'insumos'=>[$this->supply()]]));
+            $this->assertSame($before,(new \App\Service\Evolucao())->history($this->activities[0]));
         }
+        $this->assertSame(15,Access::table('Apontamentos')->find()->count());
+        $this->assertSame(5,Access::table('Insumos')->find()->count());
     }
-    public function testCompletionIsReturnedByOrderAndShownForRejectedSubmission(): void
+    public function testPercentageIsInformationalAndPartialOrderCanBePosted(): void
     {
         $this->mockService(\App\Integration\Totvs\GatewayInterface::class,fn()=>new FakeTotvs());
         \App\Test\Support\CompletedOrder::set($this->activities[0],$this->admin,85);
         $service=new \App\Service\OperacaoRapida();$order=$service->result($service->activity(Access::actor($this->admin),$this->activities[0]));
-        $this->assertSame(85.0,$order['percentual_atual']);$this->assertFalse($order['liberada_apontamento']);
-        $this->enableCsrfToken();$data=$this->input();$data['funcionario_rotulo']='Nome preservado';
-        $this->post('/apontamentos/add',['atividade_id'=>$this->activities[0],'apontamentos'=>[$data]]);
-        $this->assertResponseOk();$this->assertResponseContains('100% de evolução');$this->assertResponseContains('Nome preservado');$this->assertResponseContains('Percentual atual da O.S.: 85%');
-        $this->assertSame(0,Access::table('Apontamentos')->find()->count());
-    }
-    public function testOnlyAdminChangesHoursAndAuditKeepsBeforeAndAfter(): void
+        $this->assertSame(85.0,$order['percentual_atual']);$this->assertArrayNotHasKey('liberada_apontamento',$order);
+        $this->get('/apontamentos/add?atividade_id='.$this->activities[0]);$this->assertResponseOk();
+        $this->assertResponseContains('Percentual atual da O.S.: 85%');$this->assertResponseNotContains('100% de evolução');$this->assertResponseNotContains('Ainda não liberada');
+        $this->enableCsrfToken();$data=$this->input();
+        $this->post('/apontamentos/add',['atividade_id'=>$this->activities[0],'apontamentos'=>[$data]]);$this->assertRedirect();
+        $this->assertSame(1,Access::table('Apontamentos')->find()->count());
+        $this->assertSame(85.0,\App\Service\OrderProgress::status($this->activities[0])['percentual_atual']);
+    }    public function testOnlyAdminChangesHoursAndAuditKeepsBeforeAndAfter(): void
     {
         $id=$this->entries->save($this->admin,$this->input());$data=$this->input()+['motivo'=>'Ajuste de horário'];$data['fim']='2026-10-21T12:00';
         try{$this->entries->save($this->pcm,$data,$id);$this->fail();}catch(\Cake\Http\Exception\ForbiddenException){$this->assertSame(240,Access::table('Apontamentos')->get($id)->minutos);}

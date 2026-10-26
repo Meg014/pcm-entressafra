@@ -76,11 +76,6 @@ final class TimeEntries
                 Access::activity($user,$activity);
                 if (!$existing) {
                     PeriodoContexto::writable((int)$activity->entressafra_id);
-                    // Same lock used by evolution updates: completion cannot change during this save.
-                    if ($table->getConnection()->getDriver() instanceof \Cake\Database\Driver\Postgres) {
-                        $table->getConnection()->execute('SELECT id FROM entressafras WHERE id = ? FOR UPDATE',[(int)$activity->entressafra_id]);
-                    }
-                    if (!OrderCompletion::status((int)$activity->id)['liberada_apontamento']) { throw new \DomainException(OrderCompletion::MESSAGE); }
                 }
                 if (!$existing && ($activity->setor_executante_id===null || $activity->identificacao_setor!=='area_totvs')) { throw new \DomainException('Setor executante da O.S. pendente de identificação pelo PCM.'); }
                 if (!$existing) {

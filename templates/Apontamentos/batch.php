@@ -7,8 +7,8 @@ if (!is_array($lines) || !$lines) { $lines=[[]]; }
 <section class="panel entry-sheet">
 <?= $this->Form->create(null,['id'=>'batch-form']) ?>
 <?= $this->Form->hidden('quantidade_linhas',['value'=>count($lines),'id'=>'entry-count']) ?>
-<?= $this->element('order_autocomplete',['quickOrder'=>true,'completionRequired'=>true]) ?>
-<div id="entry-order-status" class="mb-3 alert <?= !empty($selectedOrder['liberada_apontamento'])?'alert-success':'alert-warning' ?>" role="status" data-order="<?= h(json_encode($selectedOrder,JSON_THROW_ON_ERROR)) ?>" <?= $selectedOrder?'':'hidden' ?>><?php if($selectedOrder): ?>Percentual atual da O.S.: <?= h($selectedOrder['percentual_atual']??0) ?>% · <?= !empty($selectedOrder['liberada_apontamento'])?'Liberada para apontamento.':h(\App\Service\OrderCompletion::MESSAGE) ?><?php endif; ?></div>
+<?= $this->element('order_autocomplete',['quickOrder'=>true,'showOrderProgress'=>true]) ?>
+<div id="entry-order-status" class="mb-3 small text-secondary" role="status" data-order="<?= h(json_encode($selectedOrder,JSON_THROW_ON_ERROR)) ?>" <?= $selectedOrder?'':'hidden' ?>><?php if($selectedOrder): ?>Percentual atual da O.S.: <?= h($selectedOrder['percentual_atual']??0) ?>%<?php endif; ?></div>
 <div class="entry-head" aria-hidden="true"><span>Funcionário</span><span>Data</span><span>Hora início</span><span>Hora fim</span><span>Serviço realizado</span><span>Ações</span></div>
 <div id="entry-lines">
 <?php foreach(array_values($lines) as $index=>$line): ?>
@@ -17,7 +17,7 @@ if (!is_array($lines) || !$lines) { $lines=[[]]; }
 </div>
 <button type="button" id="add-entry" class="entry-icon entry-add" aria-label="Adicionar apontamento" title="Adicionar linha">+</button>
 <div class="entry-footer">
-<?= $this->Form->button('Salvar apontamentos',['class'=>'btn btn-primary','id'=>'entry-save','disabled'=>true]) ?>
+<?= $this->Form->button('Salvar apontamentos',['class'=>'btn btn-primary','id'=>'entry-save']) ?>
 <?= $this->Html->link('Voltar',['action'=>'index'],['class'=>'btn btn-light']) ?>
 </div>
 <?= $this->Form->end() ?>

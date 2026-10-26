@@ -1,7 +1,7 @@
 <?php
 declare(strict_types=1);
 namespace App\Controller;
-use App\Service\{Access,FilaPcm,OrderCompletion};
+use App\Service\{Access,FilaPcm,OrderProgress};
 
 class FilaPcmController extends OperacaoController
 {
@@ -38,7 +38,7 @@ class FilaPcmController extends OperacaoController
             'insumo_id IN'=>$this->fetchTable('Insumos')->find()->select(['id'])->where(['atividade_id'=>(int)$id]),
         ]])->orderBy(['Auditorias.created'=>'DESC','Auditorias.id'=>'DESC']);
         [$history,$historyPage,$historyPages,$historyTotal]=$this->sectionPage($historyQuery,'historico_pagina',20);
-        $completion=OrderCompletion::status((int)$id);
+        $completion=OrderProgress::status((int)$id);
         $this->set(compact('activity','rows','supplies','supplyPage','supplyPages','supplyTotal','history','historyPage','historyPages','historyTotal','completion'));
     }
     private function sectionPage($query,string $key,int $limit): array

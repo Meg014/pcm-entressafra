@@ -6,7 +6,7 @@ $status=static fn($row):string=>$row->controle_pcm==='lancado'?'Lançado manualm
 $quantity=static fn($value):string=>str_replace('.',',',str_contains((string)$value,'.')?rtrim(rtrim((string)$value,'0'),'.'):(string)$value);
 ?>
 <div class="page-heading mb-3"><h1>O.S. <?= h($activity->os_numero) ?> — <?= h($presentation['setor_apresentacao']) ?></h1><?= $this->Html->link('Voltar à fila',['action'=>'index'],['class'=>'btn btn-light']) ?></div>
-<section class="panel mb-4"><div><strong>Descrição da atividade:</strong> <?= h($presentation['descricao']) ?></div><div><strong>Equipamento:</strong> <?= h($activity->bem) ?></div><div><strong>Percentual de conclusão:</strong> <?= h($completion['percentual_atual']) ?>%</div></section>
+<section class="panel mb-4"><div><strong>Descrição da atividade:</strong> <?= h($presentation['descricao']) ?></div><div><strong>Equipamento:</strong> <?= h($activity->bem) ?></div><div><strong>Percentual atual de evolução:</strong> <?= h($completion['percentual_atual']) ?>%</div></section>
 <section class="panel mb-4" id="horas"><h2>Apontamentos de horas</h2>
 <?php if($rows->count()): ?>
 <?= $this->Form->create(null,['id'=>'horas-controle']) ?><?= $this->Form->hidden('categoria',['value'=>'horas','id'=>'horas-categoria']) ?>

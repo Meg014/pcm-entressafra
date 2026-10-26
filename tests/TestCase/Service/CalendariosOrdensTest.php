@@ -39,7 +39,7 @@ class CalendariosOrdensTest extends TestCase
         $service=new Evolucao();
         [$reference,$week]=(new OperacaoRapida())->reference($this->season);
         $this->assertNull($week);
-        try{$this->entries->save($this->computer,['atividade_id'=>$id,'funcionario_chave'=>'pessoa-1','data_servico'=>'01/10/2026','hora_inicial'=>'07:00','hora_final'=>'09:00','descricao'=>'Sem calendário ou caderno']);$this->fail();}catch(\DomainException $e){$this->assertSame(\App\Service\OrderCompletion::MESSAGE,$e->getMessage());}
+        $this->assertGreaterThan(0,$this->entries->save($this->computer,['atividade_id'=>$id,'funcionario_chave'=>'pessoa-1','data_servico'=>'01/10/2026','hora_inicial'=>'07:00','hora_final'=>'09:00','descricao'=>'Sem calendário ou caderno']));
         $service->saveBatch($this->computer,$this->season,$reference,[['atividade_id'=>$id,'percentual'=>60,'revisao'=>0]],bin2hex(random_bytes(16)));
         $this->assertSame(60.0,$service->state($id,$reference)['percentual']);
         $this->assertCount(1,Access::table('EvolucaoSemanas')->find()->all());

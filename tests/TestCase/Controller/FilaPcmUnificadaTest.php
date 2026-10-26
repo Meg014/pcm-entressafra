@@ -67,6 +67,24 @@ class FilaPcmUnificadaTest extends TestCase
         $service->confirm($this->pcm,$this->activities[0],$this->selection([$hour],'Apontamentos'),'lancado','',true);$this->assertSame(2,$service->queueCount($actor));
         $service->confirmSupplies($this->pcm,$this->activities[1],$this->selection($only),'lancado','',true);$this->assertSame(1,$service->queueCount($actor));
     }
+    public function testQueueShowsRealEvolutionIndependentlyOfReceiptsAndTotvsStatus(): void
+    {
+        Access::table('EvolucaoRegistros')->deleteAll(['atividade_id'=>$this->activities[0]]);
+        CompletedOrder::set($this->activities[1],$this->admin,50);
+        $this->hours();$this->supplies(1);$this->hours(2,'pessoa-2');$this->supplies(2);
+        Access::table('Atividades')->updateAll(['situacao_totvs'=>'F'],['id'=>$this->activities[0]]);
+        $service=new FilaPcm();$actor=Access::actor($this->admin);$rows=array_column($service->queue($actor),null,'id');
+        foreach([0,50,100] as $index=>$percentage)$this->assertSame((float)$percentage,$rows[$this->activities[$index]]['percentual_atual']);
+        $this->assertSame(3,$service->queueCount($actor));
+        $this->get('/fila-pcm');$this->assertResponseOk();$this->assertResponseContains('Evolução (%)');$this->assertResponseContains('0%');$this->assertResponseContains('50%');$this->assertResponseContains('100%');
+        $this->get('/fila-pcm/os/'.$this->activities[1]);$this->assertResponseOk();$this->assertResponseContains('Percentual atual de evolução:');$this->assertResponseContains('50%');
+        $db=Access::table('Atividades')->getConnection();$hours=$db->execute('SELECT * FROM apontamentos ORDER BY id')->fetchAll('assoc');$supplies=$db->execute('SELECT * FROM insumos ORDER BY id')->fetchAll('assoc');
+        [$reference]=(new \App\Service\OperacaoRapida())->reference($this->season);$evolution=new \App\Service\Evolucao();$state=$evolution->state($this->activities[1],$reference);
+        $evolution->saveBatch($this->admin,$this->season,$reference,[['atividade_id'=>$this->activities[1],'percentual'=>70,'revisao'=>$state['revisao']]],bin2hex(random_bytes(16)),true);
+        $updated=array_column($service->queue($actor),null,'id');$this->assertSame(70.0,$updated[$this->activities[1]]['percentual_atual']);$this->assertSame(3,$service->queueCount($actor));
+        $this->assertSame($hours,$db->execute('SELECT * FROM apontamentos ORDER BY id')->fetchAll('assoc'));$this->assertSame($supplies,$db->execute('SELECT * FROM insumos ORDER BY id')->fetchAll('assoc'));
+        $this->get('/fila-pcm/os/'.$this->activities[2]);$this->assertResponseOk();$this->assertResponseContains('Apontamentos de horas');$this->assertResponseContains('Insumos utilizados');
+    }
     public function testConfirmAndReopenAreIndependentAndKeepAuditHistory(): void
     {
         $hour=$this->hours();$supplies=$this->supplies(0,2);$service=new FilaPcm();
@@ -121,6 +139,11 @@ class FilaPcmUnificadaTest extends TestCase
         $this->login($this->admin);$t=Access::table('Entressafras');$other=$t->saveOrFail($t->newEntity(['nome'=>'Outra','data_inicio'=>'2026-09-01','data_fim'=>'2027-04-30','status'=>'planejamento']));
         $base=Access::table('Atividades')->get($this->activities[0])->toArray();unset($base['id']);$base['entressafra_id']=$other->id;$base['caderno_id']=null;$base['os_chave']='outra-os';$base['os_numero']='OUTRA';
         PeriodoContexto::set(null);$activity=Access::table('Atividades')->saveOrFail(Access::entity(Access::table('Atividades'),$base));PeriodoContexto::set($this->season);
+        PeriodoContexto::set(null);$foreignData=Access::table('Insumos')->get($supplies[0])->toArray();unset($foreignData['id']);$foreignData['atividade_id']=$activity->id;$foreignData['material']='Material de outra entressafra';
+        $foreign=Access::table('Insumos')->saveOrFail(Access::entity(Access::table('Insumos'),$foreignData));PeriodoContexto::set($this->season);
+        $this->assertSame(1,(new FilaPcm())->queueCount(Access::actor($this->admin)));$this->assertCount(1,(new FilaPcm())->queue(Access::actor($this->admin)));
+        $this->get('/fila-pcm/os/'.$this->activities[0]);$this->assertResponseOk();$this->assertResponseNotContains('Material de outra entressafra');
+        $this->post('/fila-pcm/os/'.$this->activities[0],$this->postSelection([(int)$foreign->id]));$this->assertResponseOk();$this->assertSame('pendente',Access::table('Insumos')->get($foreign->id)->controle_pcm);
         $this->get('/fila-pcm/os/'.$activity->id);$this->assertResponseCode(403);
         $this->post('/fila-pcm/os/'.$activity->id,$this->postSelection($supplies));$this->assertResponseCode(403);
         $t->updateAll(['status'=>'encerrada'],['id'=>$this->season]);$this->get('/fila-pcm/os/'.$this->activities[0]);$this->assertResponseOk();

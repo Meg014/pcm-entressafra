@@ -15,7 +15,7 @@ final class OperacaoRapida
     {
         $out=['id'=>(string)$a->id,'numero'=>$a->os_numero,'filial'=>$a->os_filial,'servico'=>$a->servico,'bem'=>$a->bem,'situacao'=>$a->situacao_totvs,'setor'=>$a->setor_executante?->nome??'Pendente','caderno'=>($a->caderno?->nome??'Sem caderno (opcional)'),'entressafra'=>$a->entressafra->nome,'entressafra_id'=>(int)$a->entressafra_id,'descricao_caderno'=>$a->caderno?->descricao??'','selecionavel'=>true,'codigo_area'=>$a->area_executante_totvs,'centro_custo'=>''];
         if($progress) { [$reference,$week]=$this->reference((int)$a->entressafra_id,null,(int)$a->id);$state=(new Evolucao())->state((int)$a->id,$reference);$out+=['referencia'=>$reference,'calendario_confirmado'=>$week!==null,'anterior'=>$state['anterior'],'percentual'=>$state['percentual'],'revisao'=>$state['revisao'],'referencias'=>array_column((new Evolucao())->calendar((int)$a->entressafra_id),'referencia')]; }
-        if(!$progress)$out+=OrderCompletion::status((int)$a->id);
+        if(!$progress)$out+=OrderProgress::status((int)$a->id);
         $presentation=OsApresentacao::activity($a,$source);
         if(!$source&&$this->gateway!==null&&$presentation['descricao']==='Descrição não informada'){
             try{$source=$this->gateway->order($a->os_chave);$presentation=OsApresentacao::activity($a,$source);}

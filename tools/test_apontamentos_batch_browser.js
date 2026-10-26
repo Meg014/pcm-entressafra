@@ -4,11 +4,12 @@ const results=[];const check=(v,m)=>{if(!v)throw Error(m);results.push(m);};
 try{
 const lines=document.getElementById('entry-lines'),add=document.getElementById('add-entry');
 const orderRoot=document.getElementById('os-autocomplete'),save=document.getElementById('entry-save');
-check(save.disabled,'Salvar bloqueado sem O.S. selecionada');
-orderRoot.dispatchEvent(new CustomEvent('pcm-entry-order',{detail:{percentual_atual:85,liberada_apontamento:false}}));
-check(save.disabled&&document.getElementById('entry-order-status').textContent.includes('85%'),'85% visível e bloqueado');
-orderRoot.dispatchEvent(new CustomEvent('pcm-entry-order',{detail:{percentual_atual:100,liberada_apontamento:true}}));
-check(!save.disabled,'100% libera salvamento');
+check(!save.disabled,'Percentual não bloqueia o botão salvar');
+for(const percentage of [0,10,50,99,100]){
+ orderRoot.dispatchEvent(new CustomEvent('pcm-entry-order',{detail:{percentual_atual:percentage}}));
+ check(!save.disabled&&document.getElementById('entry-order-status').textContent.includes(percentage+'%'),'Percentual '+percentage+'% informativo e sem bloqueio');
+}
+check(!document.getElementById('entry-order-status').className.includes('alert'),'Sem aviso de bloqueio por percentual');
 check(lines.children.length===1,'Começa com uma linha');
 const first=lines.firstElementChild,fields=first.querySelectorAll('[data-mask]');
 check(add.textContent.trim()==='+','Adicionar usa apenas +');
