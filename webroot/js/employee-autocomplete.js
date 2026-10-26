@@ -1,13 +1,13 @@
-(() => {
-  const root = document.getElementById('funcionario-autocomplete');
-  if (!root) return;
+window.initEmployeeAutocomplete = (root) => {
+
+  if (!root) return; const find = id => root.querySelector('[id$="' + id + '"]');
   const input = root.querySelector('[role="combobox"]');
-  const key = document.getElementById('funcionario-chave');
-  const list = document.getElementById('funcionario-resultados');
-  const message = document.getElementById('funcionario-aviso');
-  const summary = document.getElementById('funcionario-resumo');
-  const selectedName = document.getElementById('funcionario-resumo-nome');
-  const selectedNumber = document.getElementById('funcionario-resumo-matricula');
+  const key = find('funcionario-chave');
+  const list = find('funcionario-resultados');
+  const message = find('funcionario-aviso');
+  const summary = find('funcionario-resumo');
+  const selectedName = find('funcionario-resumo-nome');
+  const selectedNumber = find('funcionario-resumo-matricula');
   let timer, controller, version = 0, active = -1;
   const close = () => {
     list.hidden = true; input.setAttribute('aria-expanded', 'false');
@@ -18,6 +18,7 @@
   };
   const choose = person => {
     if (person.ativo !== true) return;
+    message.dataset.lookupError='0';
     clearTimeout(timer); if (controller) controller.abort(); ++version;
     key.value = person.chave;
     input.value = person.nome;
@@ -26,6 +27,7 @@
     close(); input.focus();
   };
   input.addEventListener('input', () => {
+    message.dataset.lookupError='0';
     clearTimeout(timer); if (controller) controller.abort();
     const current = ++version; reset(); close(); list.replaceChildren(); input.setCustomValidity('');
     const term = input.value.trim();
@@ -50,9 +52,10 @@
           option.addEventListener('mousedown',event => event.preventDefault()); option.addEventListener('click',() => choose(person)); list.append(option);
         });
         list.hidden = data.results.length === 0; input.setAttribute('aria-expanded',String(!list.hidden));
+        message.dataset.lookupError=(data.warning || !data.results.length)?'1':'0';
         message.textContent = data.warning || (data.has_more ? 'Mostrando os primeiros 20 resultados. Refine o nome ou a matrícula.' : (data.results.length ? 'Selecione um funcionário NORMAL. Férias e outras situações estão bloqueadas.' : 'Nenhum funcionário encontrado.'));
       } catch (error) {
-        if (error.name !== 'AbortError' && current === version) { close(); message.textContent = error.message; }
+        if (error.name !== 'AbortError' && current === version) { close(); message.dataset.lookupError='1'; message.textContent = error.message; }
       }
     },300);
   });
@@ -66,12 +69,15 @@
       input.setAttribute('aria-activedescendant',options[active].id); options[active].scrollIntoView({block:'nearest'});
     } else if (event.key === 'Enter') { event.preventDefault(); if (active >= 0) options[active].click(); }
   });
-  document.getElementById('funcionario-limpar').addEventListener('click', () => {
+  find('funcionario-limpar').addEventListener('click', () => {
+    message.dataset.lookupError='0';
     clearTimeout(timer); if (controller) controller.abort(); ++version;
     reset(); close(); list.replaceChildren(); input.value = ''; input.setCustomValidity(''); message.textContent = 'Digite pelo menos 2 caracteres para pesquisar.'; input.focus();
   });
   document.addEventListener('click',event => { if (!root.contains(event.target)) close(); });
   input.form.addEventListener('submit',event => {
+    if (root.isConnected === false) return;
     if (!key.value) { event.preventDefault(); input.setCustomValidity('Selecione um funcionário válido da lista.'); input.reportValidity(); }
   });
-})();
+};
+window.initEmployeeAutocomplete(document.getElementById('funcionario-autocomplete'));

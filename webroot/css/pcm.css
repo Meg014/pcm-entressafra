@@ -18,3 +18,5 @@ body{font-family:system-ui,-apple-system,"Segoe UI",sans-serif}a{text-underline-
 @media(prefers-reduced-motion:reduce){.pcm-user-chevron{transition:none}}
 
 .table tr.pcm-tratado > td { background-color: #eceff1; color: #58646d; }
+
+.brand-icon{display:block;width:60px;height:60px;object-fit:contain;flex-shrink:0}@media(max-width:575px){.brand-icon{width:48px;height:48px}}

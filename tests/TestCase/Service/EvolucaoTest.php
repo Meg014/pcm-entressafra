@@ -205,7 +205,9 @@ class EvolucaoTest extends TestCase
         $base=['atividade_id'=>$this->activities[0],'funcionario_chave'=>'pessoa-1','descricao'=>'Serviço de teste'];
         foreach(['2026-10-01','2026-10-02'] as $d){$entries->save($this->admin,$base+['inicio'=>$d.'T07:00','fim'=>$d.'T09:00']);}
         $entries->save($this->admin,$base+['inicio'=>'2026-10-02T09:00','fim'=>'2026-10-02T10:00']);
-        $id=$entries->save($this->admin,$base+['inicio'=>'2026-10-03T23:00','fim'=>'2026-10-05T01:00']);$this->assertSame(1560,Access::table('Apontamentos')->get($id)->minutos);
+        // Fixture histórica: registros antigos podem atravessar dias; novos lançamentos não podem.
+        $id=$entries->save($this->admin,$base+['inicio'=>'2026-10-03T23:00','fim'=>'2026-10-03T23:30']);
+        Access::table('Apontamentos')->updateAll(['fim'=>'2026-10-05 04:00:00','minutos'=>1560],['id'=>$id]);$this->assertSame(1560,Access::table('Apontamentos')->get($id)->minutos);
         $conflicts=$entries->conflicts('pessoa-1','2026-10-04 04:00:00','2026-10-04 05:00:00');$this->assertCount(1,$conflicts);
         $this->assertSame(4,Access::table('Apontamentos')->find()->count());
     }

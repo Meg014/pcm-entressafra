@@ -71,19 +71,25 @@ class ApontamentosController extends OperacaoController
     {
         $row = $id ? $this->fetchTable('Apontamentos')->get($id) : null;
         if ($row) { $this->activity((int)$row->atividade_id); }
-        $conflicts = [];
+        $conflicts = []; $batchErrors = [];
         if ($this->request->is('post')) {
             try {
+                if (!$id && $this->request->getData('apontamentos') !== null) {
+                    $ids = (new TimeEntries($this->totvs()))->saveBatch((int)$this->currentUser->id, $this->request->getData());
+                    $this->Flash->success(count($ids).' apontamentos registrados com sucesso.');
+                    return $this->redirect(['action'=>'add']);
+                }
                 $saved = (new TimeEntries($this->totvs()))->save((int)$this->currentUser->id, $this->request->getData(), $id);
                 if(!$id && (\App\Service\Access::operational($this->currentUser)||$this->request->getData('continuar')==='1')) { $this->Flash->success('Apontamento #'.$saved.' recebido pelo PCM. Você pode iniciar outro lançamento.');return $this->redirect(['action'=>'add']); }
                 return $this->redirect(['action' => 'view', $saved]);
             } catch (ConflictException $e) { $conflicts = $e->conflicts; $this->Flash->error($e->getMessage()); }
+            catch (\App\Service\BatchEntryException $e) { $batchErrors=$e->errors; $this->Flash->error($e->getMessage()); }
             catch (\DomainException $e) { $this->Flash->error($e->getMessage()); }
         }
         $selectedOrder=null;
         $selectedId=$this->request->getData('atividade_id') ?? $this->request->getQuery('atividade_id');
         if (!$row && is_scalar($selectedId) && ctype_digit((string)$selectedId) && (int)$selectedId>0) {
-            $selected=$this->activitiesQuery()->where(['Atividades.id'=>(int)$selectedId,'Cadernos.ativo'=>true,'Atividades.disponivel_totvs'=>true])->first();
+            $selected=$this->activitiesQuery()->where(['Atividades.id'=>(int)$selectedId,'Atividades.disponivel_totvs'=>true])->first();
             if ($selected) { try{ $selectedOrder=(new \App\Service\OperacaoRapida($this->totvs()))->result((new \App\Service\OperacaoRapida())->activity($this->currentUser,(int)$selected->id)); }catch(\DomainException){} }
         }
         $selectedEmployee=null;
@@ -94,7 +100,7 @@ class ApontamentosController extends OperacaoController
                 if (($person['ativo']??false)===true && ($person['chave']??null)===$employeeKey) { $selectedEmployee=$person; }
             } catch (\DomainException) { /* Require a fresh selection if identity cannot be confirmed. */ }
         }
-        $this->set(compact('row', 'conflicts', 'selectedOrder', 'selectedEmployee')); $this->options(); $this->viewBuilder()->setTemplate('form');
+        $this->set(compact('row', 'conflicts', 'selectedOrder', 'selectedEmployee', 'batchErrors')); $this->options(); $this->viewBuilder()->setTemplate(($id || ($this->request->is('post') && $this->request->getData('apontamentos') === null)) ? 'form' : 'batch');
     }
     public function view($id): void
     {

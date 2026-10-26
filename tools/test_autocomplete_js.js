@@ -22,7 +22,7 @@ async function testAutocomplete(employeeSource, orderSource, withoutFilters=fals
     const root = get(prefix + '-autocomplete'); root.dataset.lookup = '/apontamentos/' + (employee ? 'funcionarios' : 'ordens'); root.dataset.link = '/atividades/add';
     const input = get(prefix + '-pesquisa'), key = get(employee ? 'funcionario-chave' : 'atividade-selecionada');
     const list = get(prefix + '-resultados'), message = get(prefix + '-aviso');
-    root.querySelector = () => input;
+    root.querySelector = selector => selector.startsWith('[id$=') ? get(selector.slice(6,-2)) : input;
     const form = new Element('form'); input.form = form; form.elements = {};
     for (const name of ['entressafra_id', 'setor_id', 'caderno_id', 'inicio', 'fim', 'descricao']) form.elements[name] = new Element('input');
     form.elements.entressafra_id.value = '1'; form.elements.setor_id.value = '7'; form.elements.caderno_id.value = '2'; form.elements.inicio.value = '2026-10-21T07:00'; form.elements.fim.value = '2026-10-21T11:00'; form.elements.descricao.value = 'Trabalho';

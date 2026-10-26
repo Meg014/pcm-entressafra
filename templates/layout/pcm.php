@@ -12,6 +12,8 @@ if ($canPcm) { $administrative['Atividades']='Todas as atividades / O.S.'; }
 <head>
     <?= $this->Html->charset() ?>
     <meta name="viewport" content="width=device-width, initial-scale=1">
+    <link rel="icon" type="image/png" href="<?= h($this->Url->image('icon.png?v='.filemtime(WWW_ROOT.'img/icon.png'))) ?>">
+    <link rel="apple-touch-icon" href="<?= h($this->Url->image('icon.png?v='.filemtime(WWW_ROOT.'img/icon.png'))) ?>">
     <title><?= h($this->fetch('title') ?: 'Início') ?> | PCM Entressafra</title>
     <?= $this->Html->css(['bootstrap.min', 'pcm.css?v='.filemtime(WWW_ROOT.'css/pcm.css')]) ?>
     <?= $this->fetch('meta') ?><?= $this->fetch('css') ?>
@@ -20,7 +22,7 @@ if ($canPcm) { $administrative['Atividades']='Todas as atividades / O.S.'; }
 <a class="visually-hidden-focusable" href="#conteudo">Ir para o conteúdo</a>
 <header class="pcm-header">
     <div class="container-fluid px-lg-5 py-3 d-flex flex-wrap align-items-center justify-content-between gap-3">
-        <?= $this->Html->link('<span class="brand-symbol">PCM</span><span>Controle de Entressafra<small>Planejamento e execução industrial</small></span>', ['controller' => 'Dashboard', 'action' => 'index'], ['class' => 'brand', 'escape' => false]) ?>
+        <?= $this->Html->link($this->Html->image('icon.png?v='.filemtime(WWW_ROOT.'img/icon.png'), ['class'=>'brand-icon','alt'=>'PCM','width'=>60,'height'=>60]).'<span>Controle de Entressafra<small>Planejamento e execução industrial</small></span>', ['controller' => 'Dashboard', 'action' => 'index'], ['class' => 'brand', 'escape' => false]) ?>
         <?php if (!empty($currentUser)): ?>
         <details id="pcm-user-menu" class="pcm-user-menu">
             <summary id="pcm-user-toggle" aria-controls="pcm-user-options" aria-expanded="false" class="<?= isset($administrative[$controller]) ? 'selected' : '' ?>"><span><?= h($currentUser->nome) ?><small><?= h($computer?'Computador operacional':$currentUser->perfil) ?></small></span><span class="pcm-user-chevron" aria-hidden="true">⌄</span></summary>

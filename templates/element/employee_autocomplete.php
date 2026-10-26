@@ -1,6 +1,6 @@
 <?php
 $selectedKey = $selectedEmployee['chave'] ?? '';
-$selectedLabel = $selectedEmployee['nome'] ?? $this->request->getData('funcionario_rotulo', '');
+$selectedLabel = $selectedEmployee['nome'] ?? $employeeSearchLabel ?? $this->request->getData('funcionario_rotulo', '');
 if (!is_string($selectedKey)) { $selectedKey = ''; }
 if (!is_string($selectedLabel)) { $selectedLabel = ''; }
 ?>

@@ -2,7 +2,7 @@
 (() => {
   const form=document.getElementById('apontamento-form');if(!form)return;
   const date=form.elements.data_servico,start=form.elements.hora_inicial,end=form.elements.hora_final;
-  const next=form.querySelector('input[type="checkbox"][name="termina_dia_seguinte"]'),output=document.getElementById('horas-calculadas');
+  const output=document.getElementById('horas-calculadas');
   const digits=value=>value.replace(/\D/g,'');
   const format=(value,isDate)=>{const v=digits(value).slice(0,isDate?8:4);return isDate?v.slice(0,2)+(v.length>2?'/'+v.slice(2,4):'')+(v.length>4?'/'+v.slice(4):''):v.slice(0,2)+(v.length>2?':'+v.slice(2):'');};
   const validDate=value=>{
@@ -17,8 +17,8 @@
     date.setCustomValidity(date.value&&!validDate(date.value)?'Informe uma data real no formato DD/MM/AAAA.':'');
     [start,end].forEach(field=>field.setCustomValidity(field.value&&!validTime(field.value)?'Informe uma hora entre 00:00 e 23:59.':''));
     if(!validDate(date.value)||!validTime(start.value)||!validTime(end.value)){output.textContent='Informe a data e as duas horas para calcular a duração.';return;}
-    const duration=minutes(end.value)-minutes(start.value)+(next.checked?1440:0);
-    if(duration<=0){end.setCustomValidity('O fim deve ser posterior ao início. Marque “Termina no dia seguinte” somente se houve virada de dia.');output.textContent='Intervalo inválido: confirme os horários e a opção de dia seguinte.';return;}
+    const duration=minutes(end.value)-minutes(start.value)+0;
+    if(duration<=0){end.setCustomValidity('O fim deve ser posterior ao início. O início e o fim devem estar na mesma data.');output.textContent='Intervalo inválido: confirme os horários.';return;}
     output.textContent='Duração: '+(duration/60).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2})+' h ('+Math.floor(duration/60)+'h '+duration%60+'min).';
   };
   const mask=(field,position=field.selectionStart)=>{
@@ -35,5 +35,5 @@
       field.value=field.value.slice(0,from)+text+field.value.slice(to);mask(field,from+text.length);
     });
   });
-  next.addEventListener('change',update);update();
+  update();
 })();

@@ -252,7 +252,10 @@ class CurvaReorganizacaoTest extends TestCase
         $save=fn($id,$from,$to)=>$s->save($this->admin,['atividade_id'=>$id,'funcionario_chave'=>'000001','inicio'=>$from,'fim'=>$to,'descricao'=>'Execução histórica']);
         $save($a,'2026-10-01T07:00','2026-10-01T09:00');$save($b,'2026-10-01T10:00','2026-10-01T12:00');
         $conflicts=$s->conflicts('000001','2026-10-01 11:00:00','2026-10-01 14:00:00');$this->assertCount(2,$conflicts);
-        $save($a,'2026-10-02T07:00','2026-10-02T09:00');$save($a,'2026-10-02T23:00','2026-10-03T02:00');
+        $save($a,'2026-10-02T07:00','2026-10-02T09:00');
+        // Fixture histórica com virada de dia, preservada pelas consultas de conflitos.
+        $historic=$save($a,'2026-10-02T23:00','2026-10-02T23:30');
+        Access::table('Apontamentos')->updateAll(['fim'=>'2026-10-03 05:00:00','minutos'=>180],['id'=>$historic]);
         $this->expectException(ConflictException::class);$save($b,'2026-10-03T01:00','2026-10-03T03:00');
     }
     public function testComputerCannotOrganizeClassifyTransferOrSimulate(): void

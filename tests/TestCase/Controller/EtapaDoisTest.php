@@ -109,14 +109,12 @@ class EtapaDoisTest extends TestCase
     }
     public function testMidnightAndDifferentEmployee(): void
     {
-        $id=$this->entries->save($this->admin,$this->input('2026-10-21T23:00','2026-10-22T02:00'));
-        $this->assertSame(180,Access::table('Apontamentos')->get($id)->minutos);
-        $other=$this->input('2026-10-22T01:00','2026-10-22T03:00',1); $other['funcionario_chave']='pessoa-2';
-        $this->entries->save($this->admin,$other);
-        $this->expectException(ConflictException::class);
-        $this->entries->save($this->admin,$this->input('2026-10-22T01:00','2026-10-22T03:00',1));
-    }
-    public static function invalidIntervals(): array
+        $id=$this->entries->save($this->admin,$this->input());
+        $other=$this->input();$other['funcionario_chave']='pessoa-2';
+        $this->assertGreaterThan(0,$this->entries->save($this->admin,$other));
+        $this->expectException(\DomainException::class);
+        $this->entries->save($this->admin,$this->input('2026-10-21T23:00','2026-10-22T02:00'));
+    }    public static function invalidIntervals(): array
     { return [['2026-10-21T07:00','2026-10-21T07:00'],['2026-10-21T08:00','2026-10-21T07:00'],['2026-02-30T07:00','2026-03-01T08:00'],['invalid','2026-10-21T08:00']]; }
     #[DataProvider('invalidIntervals')]
     public function testInvalidIntervals(string $from,string $to): void
@@ -426,8 +424,8 @@ class EtapaDoisTest extends TestCase
     public function testCompactEmployeeFormAndCorrectionKeepServerConfirmedSnapshot(): void
     {
         $this->get('/apontamentos/add'); $this->assertResponseOk();
-        $this->assertResponseContains('id="funcionario-resumo"');
-        $this->assertResponseContains('id="funcionario-chave"');
+        $this->assertResponseContains('id="row-0-funcionario-resumo"');
+        $this->assertResponseContains('id="row-0-funcionario-chave"');
         foreach (['funcionario_exibicao_','Nome cadastral','Código da função','id="funcionario-nome"','id="funcionario-matricula"','id="funcionario-funcao"','id="funcionario-situacao"'] as $removed) { $this->assertResponseNotContains($removed); }
         $lookup=new \App\Integration\Totvs\Employees(fn()=>[['RA_NOME'=>'Pessoa confirmada','RA_MAT'=>'000123','RA_CODFUNC'=>'00123','RA_SITFOLH'=>'','elegiveis'=>1]]);
         $gateway=$this->createMock(\App\Integration\Totvs\GatewayInterface::class);
@@ -675,7 +673,7 @@ class EtapaDoisTest extends TestCase
     public function testMaskedDateFormCreatesAndEditsFullStoredDatetimes(): void
     {
         $this->mockService(\App\Integration\Totvs\GatewayInterface::class,fn()=>new FakeTotvs());$this->enableCsrfToken();
-        $this->get('/apontamentos/add');$this->assertResponseOk();$this->assertResponseNotContains('datetime-local');$this->assertResponseContains('name="data_servico"');$this->assertResponseContains('name="hora_inicial"');$this->assertResponseContains('name="hora_final"');
+        $this->get('/apontamentos/add');$this->assertResponseOk();$this->assertResponseNotContains('datetime-local');$this->assertResponseContains('name="apontamentos[0][data_servico]"');$this->assertResponseContains('name="apontamentos[0][hora_inicial]"');$this->assertResponseContains('name="apontamentos[0][hora_final]"');
         $data=['atividade_id'=>$this->activities[0],'funcionario_chave'=>'pessoa-1','data_servico'=>'22/10/2026','hora_inicial'=>'07:30','hora_final'=>'11:30','termina_dia_seguinte'=>'0','descricao'=>'Serviço com máscara'];
         $this->post('/apontamentos/add',$data);$this->assertRedirect();$row=Access::table('Apontamentos')->find()->firstOrFail();$this->assertSame(240,$row->minutos);$this->assertSame('2026-10-22 10:30:00',$row->inicio->format('Y-m-d H:i:s'));
         $this->get('/apontamentos/edit/'.$row->id);$this->assertResponseOk();$this->assertResponseContains('value="22/10/2026"');$this->assertResponseContains('value="07:30"');$this->assertResponseNotContains('datetime-local');
@@ -688,16 +686,79 @@ class EtapaDoisTest extends TestCase
         $this->assertResponseOk();foreach(['31/02/2026','25:00','02:00','Texto preservado','Correção a conferir'] as $value){$this->assertResponseContains($value);}
         $this->assertSame(240,Access::table('Apontamentos')->get($id)->minutos);$this->assertSame('Serviço realizado',Access::table('Apontamentos')->get($id)->descricao);
     }
-    public function testMaskedMidnightConflictsAndDifferentDatesRemainGlobal(): void
+    public function testMaskedMidnightIsRejected(): void
+    {
+        $this->expectException(\DomainException::class);
+        $this->entries->save($this->admin,['atividade_id'=>$this->activities[0],'funcionario_chave'=>'pessoa-1','data_servico'=>'21/10/2026','hora_inicial'=>'23:00','hora_final'=>'02:00','termina_dia_seguinte'=>'1','descricao'=>'Virada']);
+    }
+    public function testBatchSavesDifferentEmployeesAndAdjacentIntervalsWithAudits(): void
+    {
+        $a=$this->input();$b=$this->input('2026-10-21T11:00','2026-10-21T12:00');$c=$a;$c['funcionario_chave']='pessoa-2';$c['atividade_id']=$this->activities[1];
+        $ids=$this->entries->saveBatch($this->admin,['atividade_id'=>$this->activities[0],'apontamentos'=>[$a,$b,$c]]);
+        $this->assertCount(3,$ids);
+        $this->assertSame(3,Access::table('Apontamentos')->find()->count());
+        $this->assertSame(3,Access::table('Apontamentos')->find()->where(['atividade_id'=>$this->activities[0]])->count());
+        $this->assertSame(3,Access::table('Auditorias')->find()->where(['acao'=>'criacao'])->count());
+        foreach($ids as $id){$this->get('/apontamentos/view/'.$id);$this->assertResponseOk();}
+        $this->get('/apontamentos');$this->assertResponseOk();
+        $this->get('/consulta-pcm');$this->assertResponseOk();
+    }
+    public function testBatchOverlapsAndInvalidRowsSaveNothing(): void
+    {
+        $a=$this->input();$b=$this->input('2026-10-21T09:00','2026-10-21T12:00');
+        try{$this->entries->saveBatch($this->admin,['atividade_id'=>$this->activities[0],'apontamentos'=>[$a,$b]]);$this->fail();}
+        catch(\App\Service\BatchEntryException $e){$this->assertCount(2,$e->errors);}
+        $this->assertSame(0,Access::table('Apontamentos')->find()->count());
+        $b=$this->input('2026-10-21T12:00','2026-10-21T11:00');
+        try{$this->entries->saveBatch($this->admin,['atividade_id'=>$this->activities[0],'apontamentos'=>[$a,$b]]);$this->fail();}
+        catch(\App\Service\BatchEntryException $e){$this->assertArrayHasKey(1,$e->errors);}
+        $this->assertSame(0,Access::table('Apontamentos')->find()->count());
+    }
+    public function testBatchExistingConflictPreservesAllPostedFields(): void
     {
         $this->mockService(\App\Integration\Totvs\GatewayInterface::class,fn()=>new FakeTotvs());
-        $base=['atividade_id'=>$this->activities[0],'funcionario_chave'=>'pessoa-1','data_servico'=>'21/10/2026','hora_inicial'=>'23:00','hora_final'=>'02:00','termina_dia_seguinte'=>'1','descricao'=>'Serviço após meia-noite'];
-        $id=$this->entries->save($this->admin,$base);$this->assertSame(180,Access::table('Apontamentos')->get($id)->minutos);
-        $this->get('/apontamentos/edit/'.$id);$this->assertResponseOk();$dom=new \DOMDocument();@$dom->loadHTML((string)$this->_response->getBody());$xpath=new \DOMXPath($dom);$this->assertSame(1,$xpath->query('//input[@type="checkbox" and @name="termina_dia_seguinte" and @checked]')->length);
-        $next=$base;$next['atividade_id']=$this->activities[1];$next['data_servico']='22/10/2026';$next['hora_inicial']='01:00';$next['hora_final']='03:00';$next['termina_dia_seguinte']='0';
-        $this->enableCsrfToken();$this->post('/apontamentos/add',$next);$this->assertResponseOk();foreach(['Horários conflitantes','21/10/2026 23:00','22/10/2026 02:00','Mecânica','os-0','Serviço após meia-noite'] as $value){$this->assertResponseContains($value);}
+        $this->entries->save($this->admin,$this->input());
+        $a=['funcionario_chave'=>'pessoa-1','funcionario_rotulo'=>'Funcionário preservado','data_servico'=>'21/10/2026','hora_inicial'=>'08:00','hora_final'=>'09:00','descricao'=>'Descrição preservada'];
+        $b=$a;$b['funcionario_chave']='pessoa-2';$b['descricao']='Outra descrição preservada';
+        $c=$b;$c['funcionario_chave']='';$c['funcionario_rotulo']='Nome ainda digitado';
+        $this->enableCsrfToken();$this->post('/apontamentos/add',['atividade_id'=>$this->activities[0],'apontamentos'=>[$a,$b,$c]]);
+        $this->assertResponseOk();foreach(['Funcionário preservado','Descrição preservada','Outra descrição preservada','Nome ainda digitado','08:00','09:00','Conflito de horário'] as $text){$this->assertResponseContains($text);}
         $this->assertSame(1,Access::table('Apontamentos')->find()->count());
-        $next['hora_inicial']='02:00';$this->assertGreaterThan(0,$this->entries->save($this->admin,$next));
-        $next['data_servico']='23/10/2026';$this->assertGreaterThan(0,$this->entries->save($this->admin,$next));
+    }
+    public function testBatchRollsBackEntriesAndAuditsWhenRevalidationFails(): void
+    {
+        $gateway=$this->createMock(\App\Integration\Totvs\GatewayInterface::class);$calls=0;
+        $gateway->method('order')->willReturn((new FakeTotvs())->order('os-0'));
+        $gateway->method('employee')->willReturnCallback(function($key)use(&$calls){$person=(new FakeTotvs())->employee($key);if(++$calls===4)$person['ativo']=false;return $person;});
+        $a=$this->input();$b=$this->input('2026-10-21T11:00','2026-10-21T12:00');
+        try{(new TimeEntries($gateway))->saveBatch($this->admin,['atividade_id'=>$this->activities[0],'apontamentos'=>[$a,$b]]);$this->fail();}
+        catch(\App\Service\BatchEntryException $e){$this->assertArrayHasKey(1,$e->errors);}
+        $this->assertSame(0,Access::table('Apontamentos')->find()->count());
+        $this->assertSame(0,Access::table('Auditorias')->find()->where(['acao'=>'criacao'])->count());
+    }
+    public function testBatchFormAndSingleSubmission(): void
+    {
+        $this->mockService(\App\Integration\Totvs\GatewayInterface::class,fn()=>new FakeTotvs());
+        $this->get('/apontamentos/add');$this->assertResponseOk();
+        $this->assertResponseContains('Salvar apontamentos');
+        $this->assertResponseNotContains('Termina no dia seguinte');
+        $dom=new \DOMDocument();@$dom->loadHTML((string)$this->_response->getBody());$xpath=new \DOMXPath($dom);
+        $this->assertSame(1,$xpath->query('//*[@id="entry-lines"]/article')->length);
+        if(getenv('BATCH_PREVIEW')){file_put_contents(TMP.'batch-preview.html',(string)$this->_response->getBody());}
+        $this->enableCsrfToken();
+        $this->post('/apontamentos/add',['atividade_id'=>$this->activities[0],'apontamentos'=>[['funcionario_chave'=>'pessoa-1','data_servico'=>'21/10/2026','hora_inicial'=>'07:00','hora_final'=>'11:00','descricao'=>'Lote único']]]);
+        $this->assertRedirect();$this->assertSame(1,Access::table('Apontamentos')->find()->count());
+        $this->assertSession('1 apontamentos registrados com sucesso.','Flash.flash.0.message');
+    }
+    public function testBatchRejectsInvalidEmployeeAndTruncatedSubmission(): void
+    {
+        $gateway=$this->createMock(\App\Integration\Totvs\GatewayInterface::class);
+        $gateway->method('order')->willReturn((new FakeTotvs())->order('os-0'));
+        $gateway->method('employee')->willReturnCallback(function($key){$p=(new FakeTotvs())->employee($key);$p['ativo']=false;return $p;});
+        try{(new TimeEntries($gateway))->saveBatch($this->admin,['atividade_id'=>$this->activities[0],'apontamentos'=>[$this->input()]]);$this->fail();}
+        catch(\App\Service\BatchEntryException $e){$this->assertArrayHasKey(0,$e->errors);}
+        $this->assertSame(0,Access::table('Apontamentos')->find()->count());
+        $this->expectException(\DomainException::class);
+        $this->entries->saveBatch($this->admin,['atividade_id'=>$this->activities[0],'quantidade_linhas'=>'2','apontamentos'=>[$this->input()]]);
     }
 }

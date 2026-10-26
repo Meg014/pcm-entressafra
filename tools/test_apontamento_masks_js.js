@@ -13,7 +13,7 @@ function testApontamentoMasks(source) {
     paste(date,'31/02/2026');check(!!date.validity,'Data inexistente não aceita.');input(date,'22102026');
     input(start,'2460');check(!!start.validity,'Hora e minuto inválidos não aceitos.');
     input(start,'2300');input(end,'0200');check(!!end.validity&&!next.checked,'Virada não é presumida automaticamente.');
-    next.checked=true;next.events.change();check(!end.validity&&out.textContent.includes('3,00 h'),'Virada explícita calcula três horas.');
+    next.checked=true;input(end,'0200');check(!!end.validity,'Virada permanece bloqueada.');
     next.checked=false;input(start,'0700');input(end,'0700');check(!!end.validity,'Duração zero não permitida.');
     input(end,'1130');check(!end.validity,'Correção do valor limpa a validação anterior.');
     date.selectionStart=3;date.selectionEnd=5;date.events.paste({preventDefault(){},clipboardData:{getData:()=>'11'}});check(date.value==='22/11/2026','Colagem substitui somente o trecho selecionado.');

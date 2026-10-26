@@ -19,9 +19,10 @@ final class TimeEntries
         $next=$input['termina_dia_seguinte']??'0';
         if(!in_array($next,['0','1',0,1,false,true],true))throw new \DomainException('Opção de término no dia seguinte inválida.');
         $next=in_array($next,['1',1,true],true);
+        if ($next) { throw new \DomainException('O apontamento deve começar e terminar na mesma data.'); }
         $day=\DateTimeImmutable::createFromFormat('!d/m/Y',$date,new \DateTimeZone('America/Sao_Paulo'));
         $input['inicio']=$day->format('Y-m-d').'T'.$time($from);
-        $input['fim']=($next?$day->modify('+1 day'):$day)->format('Y-m-d').'T'.$time($to);
+        $input['fim']=$day->format('Y-m-d').'T'.$time($to);
         self::interval($input['inicio'],$input['fim']);return $input;
     }
     public static function interval(string $start, string $end): array
@@ -33,7 +34,8 @@ final class TimeEntries
             return $date->setTimezone(new \DateTimeZone('UTC'));
         };
         $from = $parse($start); $to = $parse($end);
-        if ($to <= $from) { throw new \DomainException('O fim deve ser posterior ao início. Para atravessar a meia-noite, informe também a data final.'); }
+        if (substr($start,0,10) !== substr($end,0,10)) { throw new \DomainException('O apontamento deve começar e terminar na mesma data.'); }
+        if ($to <= $from) { throw new \DomainException('O fim deve ser posterior ao início.'); }
         return [$from->format('Y-m-d H:i:s'), $to->format('Y-m-d H:i:s'), (int)(($to->getTimestamp() - $from->getTimestamp()) / 60)];
     }
     public function conflicts(string $employee, string $start, string $end, ?int $except = null): array
@@ -48,13 +50,13 @@ final class TimeEntries
         }
         return $result;
     }
-    public function save(int $userId, array $input, ?int $id = null): int
+    public function save(int $userId, array $input, ?int $id = null, bool $validateOnly = false): int
     {
         $input=self::formInput($input);
         $user = Access::actor($userId);
         $table = Access::table('Apontamentos');
         try {
-            return $table->getConnection()->transactional(function () use ($user, $table, $input, $id): int {
+            return $table->getConnection()->transactional(function () use ($user, $table, $input, $id, $validateOnly): int {
                 if ($id !== null && $table->getConnection()->getDriver() instanceof \Cake\Database\Driver\Postgres) {
                     $table->getConnection()->execute('SELECT id FROM apontamentos WHERE id = ? FOR UPDATE', [$id]);
                 }
@@ -105,6 +107,7 @@ final class TimeEntries
                 }
                 $conflicts = $this->conflicts($employee['chave'], $start, $end, $id);
                 if ($conflicts) { throw new ConflictException($conflicts); }
+                if ($validateOnly) { return 0; }
                 $now = gmdate('Y-m-d H:i:s');
                 $data = ['atividade_id' => $activity->id, 'funcionario_chave' => $employee['chave'], 'funcionario_nome' => $employee['nome'], 'funcionario_matricula' => $employee['matricula'], 'funcionario_filial' => $employee['filial'], 'funcionario_vinculo' => $employee['vinculo'], 'snapshot' => json_encode($snapshot, JSON_THROW_ON_ERROR), 'inicio' => $start, 'fim' => $end, 'minutos' => $minutes, 'descricao' => $description, 'alterado_por' => $user->id, 'modified' => $now];
                 if (!$existing) { $data += ['criado_por' => $user->id, 'created' => $now, 'cancelado' => false, 'controle_pcm' => 'pendente']; }
@@ -124,6 +127,52 @@ final class TimeEntries
             }
             throw $e;
         }
+    }
+    public function saveBatch(int $userId, array $input): array
+    {
+        $rows = $input['apontamentos'] ?? null;
+        if (!is_array($rows) || !$rows || !array_is_list($rows)) { throw new \DomainException('Adicione pelo menos um apontamento.'); }
+        if (isset($input['quantidade_linhas']) && (string)$input['quantidade_linhas'] !== (string)count($rows)) {
+            throw new \DomainException('O formulário recebido está incompleto. Reduza o lote e tente novamente. Nenhum apontamento foi salvo.');
+        }
+        $errors = []; $prepared = [];
+        foreach ($rows as $index => $row) {
+            try {
+                if (!is_array($row)) { throw new \DomainException('Linha inválida.'); }
+                foreach (['funcionario_chave','funcionario_rotulo','data_servico','hora_inicial','hora_final','inicio','fim','descricao'] as $field) {
+                    if (isset($row[$field]) && !is_string($row[$field])) { throw new \DomainException('Preencha os campos da linha com valores válidos.'); }
+                }
+                $row['atividade_id'] = $input['atividade_id'] ?? null;
+                $row['consultar_totvs'] = '1';
+                $normalized = self::formInput($row);
+                $this->save($userId, $row, null, true);
+                $prepared[$index] = $normalized;
+            } catch (ConflictException $e) { $errors[$index] = $this->batchConflict($e); }
+            catch (\DomainException $e) { $errors[$index] = $e->getMessage(); }
+        }
+        foreach ($prepared as $i => $a) {
+            foreach ($prepared as $j => $b) {
+                if ($j <= $i || empty($a['funcionario_chave']) || $a['funcionario_chave'] !== ($b['funcionario_chave'] ?? null)) { continue; }
+                if ($a['inicio'] < $b['fim'] && $a['fim'] > $b['inicio']) {
+                    $message = 'Funcionário '.($a['funcionario_rotulo'] ?? $a['funcionario_chave']).': conflito entre linhas '.($i+1).' e '.($j+1).' ('.$a['inicio'].' até '.$a['fim'].' / '.$b['inicio'].' até '.$b['fim'].').';
+                    $errors[$i] = $message; $errors[$j] = $message;
+                }
+            }
+        }
+        if ($errors) { throw new BatchEntryException($errors); }
+        return Access::table('Apontamentos')->getConnection()->transactional(function () use ($prepared, $userId): array {
+            $ids = [];
+            foreach ($prepared as $index => $row) {
+                try { $ids[] = $this->save($userId, $row); }
+                catch (ConflictException $e) { throw new BatchEntryException([$index => $this->batchConflict($e)]); }
+                catch (\DomainException $e) { throw new BatchEntryException([$index => $e->getMessage()]); }
+            }
+            return $ids;
+        });
+    }
+    private function batchConflict(ConflictException $error): string
+    {
+        return 'Conflito de horário: '.implode('; ', array_map(static fn(array $c): string => $c['nome'].' · Matrícula '.$c['matricula'].' · '.$c['inicio'].' até '.$c['fim'].' · O.S. '.$c['os'], $error->conflicts));
     }
     public function change(int $userId, int $id, string $action, string $reason): void
     {
