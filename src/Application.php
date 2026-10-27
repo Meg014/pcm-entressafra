@@ -111,6 +111,7 @@ class Application extends BaseApplication
     public function services(ContainerInterface $container): void
     {
         $container->add(\App\Integration\Totvs\GatewayInterface::class, \App\Integration\Totvs\Gateway::class);
+        $container->add(\App\Integration\Totvs\ListOrders::class);
         $container->add(\App\Service\BulkLinks::class);
         // Allow your Tables to be dependency injected
         //$container->delegate(new \Cake\ORM\Locator\TableContainer());

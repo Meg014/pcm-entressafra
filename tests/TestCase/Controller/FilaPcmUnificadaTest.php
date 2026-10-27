@@ -149,4 +149,182 @@ class FilaPcmUnificadaTest extends TestCase
         $t->updateAll(['status'=>'encerrada'],['id'=>$this->season]);$this->get('/fila-pcm/os/'.$this->activities[0]);$this->assertResponseOk();
         $this->post('/fila-pcm/os/'.$this->activities[0],$this->postSelection($supplies));$this->assertResponseCode(403);$this->assertSame('pendente',Access::table('Insumos')->get($supplies[0])->controle_pcm);
     }
+    private function filterScenario(): array
+    {
+        Access::table('EvolucaoRegistros')->deleteAll(['atividade_id'=>$this->activities[0]]);
+        CompletedOrder::set($this->activities[1],$this->admin,50);
+        $this->hours();$this->supplies(1);$this->hours(2,'pessoa-2');$this->supplies(2,2);
+        $activity=Access::table('Atividades')->get($this->activities[0]);
+        $book=Access::table('Cadernos')->get($activity->caderno_id);
+        $areas=Access::table('AreasFabrica');
+        $area=$areas->saveOrFail(Access::entity($areas,['nome'=>'CALDEIRARIA','entressafra_id'=>$this->season]));
+        $books=Access::table('Cadernos');
+        $other=$books->saveOrFail($books->newEntity(['nome'=>'Caderno Caldeiraria','entressafra_id'=>$this->season,'setor_id'=>$book->setor_id,'area_curva_id'=>$area->id,'ativo'=>true]));
+        Access::table('Atividades')->updateAll(['caderno_id'=>$other->id],['id'=>$this->activities[2]]);
+        // Evolution, not the TOTVS closed flag, defines completion.
+        Access::table('Atividades')->updateAll(['situacao_totvs'=>'F'],['id'=>$this->activities[0]]);
+        Access::table('Atividades')->updateAll(['situacao_totvs'=>'L'],['id'=>$this->activities[2]]);
+        return ['moenda'=>(string)$book->area_curva_id,'caldeiraria'=>(string)$area->id];
+    }
+    public function testQueueFiltersSectorEvolutionAndCombinationsWithoutWriting(): void
+    {
+        $sectors=$this->filterScenario();$service=new FilaPcm();$actor=Access::actor($this->admin);
+        $db=Access::table('Atividades')->getConnection();$before=[];
+        foreach(['atividades','apontamentos','insumos','evolucao_registros','auditorias'] as $table) {
+            $before[$table]=$db->execute('SELECT * FROM '.$table.' ORDER BY id')->fetchAll('assoc');
+        }
+        foreach(['zero'=>0,'andamento'=>1,'concluidas'=>2] as $filter=>$index) {
+            $rows=$service->queue($actor,null,['evolucao'=>$filter]);
+            $this->assertSame([$this->activities[$index]],array_map('intval',array_column($rows,'id')));
+            $this->assertSame(1,$service->queueCount($actor,['evolucao'=>$filter]));
+        }
+        $this->assertCount(2,$service->queue($actor,null,['setor'=>$sectors['moenda']]));
+        $this->assertCount(1,$service->queue($actor,null,['setor'=>$sectors['caldeiraria']]));
+        $this->assertSame([],$service->queue($actor,null,['setor'=>$sectors['moenda'],'evolucao'=>'concluidas']));
+        $rows=$service->queue($actor,null,['setor'=>$sectors['caldeiraria'],'evolucao'=>'concluidas']);
+        $this->assertSame(1,(int)$rows[0]['apontamentos_pendentes']);$this->assertSame(2,(int)$rows[0]['insumos_pendentes']);$this->assertSame(120,(int)$rows[0]['minutos']);
+        $this->assertSame(100.0,$rows[0]['percentual_atual']);
+        $this->get('/fila-pcm?setor='.$sectors['caldeiraria'].'&evolucao=concluidas');$this->assertResponseOk();
+        $this->assertResponseContains('Ver registros');$this->assertResponseContains('100%');
+        $this->assertResponseContains('/fila-pcm/os/'.$this->activities[2]);
+        $this->get('/fila-pcm/os/'.$this->activities[2]);$this->assertResponseOk();$this->assertResponseContains('Apontamentos de horas');$this->assertResponseContains('Insumos utilizados');
+        foreach($before as $table=>$rows) { $this->assertSame($rows,$db->execute('SELECT * FROM '.$table.' ORDER BY id')->fetchAll('assoc')); }
+    }
+    public function testQueueFilterFormClearInvalidInputAndSeasonIsolation(): void
+    {
+        $sectors=$this->filterScenario();
+        $areas=Access::table('AreasFabrica');$foreign=$areas->saveOrFail(Access::entity($areas,['nome'=>'FORA DO PERÍODO','entressafra_id'=>null]));
+        $this->get('/fila-pcm?setor='.$sectors['moenda'].'&evolucao=andamento');$this->assertResponseOk();
+        $this->assertResponseNotContains('FORA DO PERÍODO');
+        $dom=new \DOMDocument();@$dom->loadHTML((string)$this->_response->getBody());$xp=new \DOMXPath($dom);
+        $this->assertSame(1,$xp->query('//form[@id="fila-filtros" and @method="get"]')->length);
+        $this->assertSame(1,$xp->query('//select[@name="setor"]/option[@selected and @value="'.$sectors['moenda'].'"]')->length);
+        $this->assertSame(1,$xp->query('//select[@name="evolucao"]/option[@selected and @value="andamento"]')->length);
+        $this->assertSame('/fila-pcm',$xp->query('//a[text()="Limpar filtros"]')->item(0)->getAttribute('href'));
+        $this->assertSame(1,$xp->query('//table/tbody/tr')->length);
+        $this->get('/fila-pcm');$this->assertResponseOk();
+        $dom=new \DOMDocument();@$dom->loadHTML((string)$this->_response->getBody());$xp=new \DOMXPath($dom);
+        $this->assertSame(3,$xp->query('//table/tbody/tr')->length);
+        foreach(['setor='.$foreign->id,'setor=1%20OR%201=1','setor[]=1','evolucao[]=zero','evolucao=invalida'] as $query) {
+            $this->get('/fila-pcm?'.$query);$this->assertResponseCode(400);
+        }
+        $this->login($this->pcm);$this->get('/fila-pcm?evolucao=concluidas');$this->assertResponseOk();
+        $this->login($this->responsible);$this->get('/fila-pcm?evolucao=concluidas');$this->assertResponseCode(403);
+    }
+    public function testQueueFiltersBeforePaginationAndPreservesQuery(): void
+    {
+        $sectors=$this->filterScenario();$activityTable=Access::table('Atividades');$supplyTable=Access::table('Insumos');
+        $base=$activityTable->get($this->activities[0])->toArray();unset($base['id']);
+        $supply=$supplyTable->find()->where(['atividade_id'=>$this->activities[1]])->firstOrFail()->toArray();unset($supply['id']);
+        $ids=[];
+        for($i=0;$i<11;$i++) {
+            $data=array_replace($base,['os_chave'=>'filtro-'.$i,'os_numero'=>'FILTRO-'.str_pad((string)$i,2,'0',STR_PAD_LEFT)]);
+            $id=(int)$activityTable->saveOrFail(Access::entity($activityTable,$data))->id;$ids[]=$id;
+            CompletedOrder::set($id,$this->admin);
+            $supplyTable->saveOrFail(Access::entity($supplyTable,array_replace($supply,['atividade_id'=>$id])));
+        }
+        $filters=['setor'=>$sectors['moenda'],'evolucao'=>'concluidas'];$service=new FilaPcm();$actor=Access::actor($this->admin);
+        $first=$service->queuePage($actor,1,$filters);$last=$service->queuePage($actor,2,$filters);
+        $this->assertSame(11,$first['total']);$this->assertSame(2,$first['pages']);$this->assertCount(10,$first['rows']);$this->assertCount(1,$last['rows']);
+        $this->assertSame($ids,array_map('intval',array_column(array_merge($first['rows'],$last['rows']),'id')));
+        $this->assertSame(2,$service->queuePage($actor,999,$filters)['page']);
+        $this->get('/fila-pcm?'.http_build_query($filters));$this->assertResponseOk();
+        $dom=new \DOMDocument();@$dom->loadHTML((string)$this->_response->getBody());$xp=new \DOMXPath($dom);
+        $next=$xp->query('//nav[@aria-label="Paginação"]/a[text()="Próxima"]')->item(0)->getAttribute('href');
+        parse_str((string)parse_url($next,PHP_URL_QUERY),$query);
+        foreach (['pagina'=>'2']+$filters as $key=>$value) { $this->assertSame($value,$query[$key]); }
+        $this->assertSame((string)$this->season,$query['entressafra_id']);
+        $this->get($next);$this->assertResponseOk();$this->assertResponseContains('Página 2 de 2');$this->assertResponseContains('FILTRO-10');$this->assertResponseNotContains('FILTRO-00');
+        if(getenv('FILA_FILTER_PREVIEW'))file_put_contents(TMP.'fila-filtros-preview.html',(string)$this->_response->getBody());
+    }
+    public function testQueueZeroFilterIncludesMissingAndExplicitZeroAndFollowsEvolutionChanges(): void
+    {
+        $this->filterScenario();$service=new FilaPcm();$actor=Access::actor($this->admin);
+        CompletedOrder::set($this->activities[1],$this->admin,0);
+        $this->assertSame(2,$service->queueCount($actor,['evolucao'=>'zero']));
+        foreach([1,99] as $percentage) {
+            CompletedOrder::set($this->activities[1],$this->admin,$percentage);
+            $rows=$service->queue($actor,null,['evolucao'=>'andamento']);
+            $this->assertSame([$this->activities[1]],array_map('intval',array_column($rows,'id')));
+            $this->assertSame((float)$percentage,$rows[0]['percentual_atual']);
+        }
+        [$reference]=(new \App\Service\OperacaoRapida())->reference($this->season);
+        $evolution=new \App\Service\Evolucao();$state=$evolution->state($this->activities[1],$reference);
+        $evolution->saveBatch($this->admin,$this->season,$reference,[['atividade_id'=>$this->activities[1],'percentual'=>100,'revisao'=>$state['revisao']]],bin2hex(random_bytes(16)),true);
+        $this->assertSame(2,$service->queueCount($actor,['evolucao'=>'concluidas']));
+        $this->assertSame(0,$service->queueCount($actor,['evolucao'=>'andamento']));
+    }
+    public function testQueueSectorFallbackForOrderWithoutNotebook(): void
+    {
+        $this->supplies();$activity=Access::table('Atividades')->get($this->activities[0]);
+        Access::table('Atividades')->updateAll(['caderno_id'=>null],['id'=>$activity->id]);
+        $service=new FilaPcm();$actor=Access::actor($this->admin);$key='equipe_'.$activity->setor_executante_id;
+        $this->assertArrayHasKey($key,$service->sectorOptions($actor));
+        $rows=$service->queue($actor,null,['setor'=>$key,'evolucao'=>'concluidas']);
+        $this->assertCount(1,$rows);$this->assertSame((int)$activity->id,(int)$rows[0]['id']);
+        $this->get('/fila-pcm?setor='.$key.'&evolucao=concluidas');$this->assertResponseOk();$this->assertResponseContains('Ver registros');
+    }
+    private function descriptionScenario(): array
+    {
+        $sectors=$this->filterScenario();
+        foreach (['005316','005525','005897'] as $i=>$number) {
+            Access::table('Atividades')->updateAll(['os_numero'=>$number,'os_filial'=>'01','os_chave'=>\App\Integration\Totvs\Orders::key('01',$number)],['id'=>$this->activities[$i]]);
+        }
+        return $sectors;
+    }
+    private function descriptionRow(string $number,string $description,string $branch='01'): array
+    {
+        return ['numero'=>$number,'filial'=>$branch,'codigo_servico'=>'1','codigo_area'=>'A0','centro_custo'=>'CC','data_origem'=>'20260101','situacao'=>'C','termino'=>'S','bem'=>'BEM DO TOTVS','servico'=>'ENTRESSAFRA','correspondencias_servico'=>1,'identidades'=>1,'descricao_totvs'=>$description];
+    }
+    public function testLiveDescriptionsAreBatchedForHoursSuppliesBothAndFilteredQueue(): void
+    {
+        $sectors=$this->descriptionScenario();$calls=new \ArrayObject();
+        $descriptions=['005316'=>'MANUTENÇÃO CORRETIVA ILUMINAÇÃO','005525'=>'DESMONTAGEM E MONTAGEM CORRENTE E TALISCAS DA ESTEIRA METALICA','005897'=>'DESMONTAGEM 4 T'];
+        $this->mockService(\App\Integration\Totvs\ListOrders::class,fn()=>new \App\Integration\Totvs\ListOrders(function($sql,$params)use(&$calls,$descriptions){
+            $calls[]=$params;$out=[];
+            foreach($descriptions as $number=>$description) { if(in_array($number,$params,true))$out[]=$this->descriptionRow($number,$description); }
+            return $out;
+        }));
+        $db=Access::table('Atividades')->getConnection();$before=[];
+        foreach(['atividades','apontamentos','insumos','evolucao_registros','auditorias'] as $table)$before[$table]=$db->execute('SELECT * FROM '.$table.' ORDER BY id')->fetchAll('assoc');
+        $this->get('/fila-pcm');$this->assertResponseOk();$this->assertCount(1,$calls);
+        foreach($descriptions as $number=>$description) { $this->assertResponseContains($number);$this->assertResponseContains($description); }
+        $this->assertResponseNotContains('Descrição não informada');$this->assertResponseContains('Bem de teste');
+        $this->assertSame('01',$calls[0]['filial']);$this->assertSame(['005316','005525','005897'],[$calls[0]['n0'],$calls[0]['n1'],$calls[0]['n2']]);
+        foreach($this->activities as $i=>$id) {
+            $this->get('/fila-pcm/os/'.$id);$this->assertResponseOk();$this->assertResponseContains(array_values($descriptions)[$i]);
+        }
+        $this->get('/fila-pcm?setor='.$sectors['caldeiraria'].'&evolucao=concluidas');$this->assertResponseOk();
+        $this->assertResponseContains('DESMONTAGEM 4 T');$this->assertResponseNotContains('MANUTENÇÃO CORRETIVA ILUMINAÇÃO');
+        $this->assertSame('005897',$calls[count($calls)-1]['n0']);$this->assertSame('',$calls[count($calls)-1]['n1']);
+        foreach($before as $table=>$rows)$this->assertSame($rows,$db->execute('SELECT * FROM '.$table.' ORDER BY id')->fetchAll('assoc'));
+    }
+    public function testLocalDescriptionKeepsPriorityAndDoesNotRequireTotvsLookup(): void
+    {
+        $this->descriptionScenario();
+        (new \App\Service\DescricaoAtividade())->save($this->admin,$this->activities[0],'Complemento local conferido','PCM');
+        $calls=new \ArrayObject();
+        $this->mockService(\App\Integration\Totvs\ListOrders::class,fn()=>new \App\Integration\Totvs\ListOrders(function($sql,$params)use(&$calls){$calls[]=$params;return [];}));
+        $this->get('/fila-pcm');$this->assertResponseOk();$this->assertResponseContains('Complemento local conferido');
+        $this->assertNotContains('005316',$calls[0]);
+        $this->get('/fila-pcm/os/'.$this->activities[0]);$this->assertResponseOk();$this->assertResponseContains('Complemento local conferido');$this->assertCount(1,$calls);
+        $this->assertSame('Complemento local conferido',Access::table('Atividades')->get($this->activities[0])->descricao_atividade);
+    }
+    public function testMissingAmbiguousOrUnavailableTotvsKeepsQueueAndDetailAccessible(): void
+    {
+        $this->descriptionScenario();$table=Access::table('Atividades');
+        $snapshot=json_decode($table->get($this->activities[0])->snapshot_totvs,true);$snapshot['descricao_totvs']='Descrição histórica preservada';
+        $table->updateAll(['snapshot_totvs'=>json_encode($snapshot,JSON_THROW_ON_ERROR)],['id'=>$this->activities[0]]);
+        foreach(['missing','unavailable','ambiguous','blank','wrong_branch'] as $mode) {
+            $this->mockService(\App\Integration\Totvs\ListOrders::class,fn()=>new \App\Integration\Totvs\ListOrders(function()use($mode){
+                if($mode==='unavailable')throw new \RuntimeException('Credenciais privadas não devem aparecer');
+                if($mode==='missing')return [];
+                $row=$this->descriptionRow('005316',$mode==='blank'?'':'Descrição que não pode substituir o histórico',$mode==='wrong_branch'?'02':'01');
+                return $mode==='ambiguous'?[$row,$row]:[$row];
+            }));
+            $this->get('/fila-pcm');$this->assertResponseOk();$this->assertResponseContains('Descrição histórica preservada');$this->assertResponseContains('Ver registros');
+            $this->assertResponseNotContains('Credenciais privadas');$this->assertResponseNotContains('Descrição que não pode substituir');
+            $this->get('/fila-pcm/os/'.$this->activities[0]);$this->assertResponseOk();$this->assertResponseContains('Descrição histórica preservada');
+        }
+    }
 }

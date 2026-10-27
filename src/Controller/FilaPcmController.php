@@ -1,17 +1,27 @@
 <?php
 declare(strict_types=1);
 namespace App\Controller;
-use App\Service\{Access,FilaPcm,OrderProgress};
+use App\Service\{Access,FilaPcm,OrderProgress,OrderDescriptions};
+use App\Integration\Totvs\ListOrders;
 
 class FilaPcmController extends OperacaoController
 {
-    public function index(): void
+    public function index(ListOrders $orders): void
     {
-        Access::pcm($this->currentUser);$service=new FilaPcm();$count=$service->queueCount($this->currentUser);
-        $pages=max(1,(int)ceil($count/10));$page=max(1,min((int)$this->request->getQuery('pagina',1),$pages));
-        $this->set(compact('page','pages'));$this->set('rows',$service->queue($this->currentUser,$page));
+        Access::pcm($this->currentUser);$service=new FilaPcm();
+        $sectors=$service->sectorOptions($this->currentUser);
+        $filters=['setor'=>$this->request->getQuery('setor',''),'evolucao'=>$this->request->getQuery('evolucao','')];
+        if (!is_string($filters['setor']) || ($filters['setor']!=='' && !array_key_exists($filters['setor'],$sectors)) ||
+            !is_string($filters['evolucao']) || !in_array($filters['evolucao'],['','zero','andamento','concluidas'],true)) {
+            throw new \Cake\Http\Exception\BadRequestException('Filtros inválidos.');
+        }
+        $requested=$this->request->getQuery('pagina',1);
+        $result=$service->queuePage($this->currentUser,is_scalar($requested)?(int)$requested:1,$filters);
+        $this->set($result);
+        $this->set('presentations',(new OrderDescriptions($orders))->presentations(array_column($result['rows'],'id')));
+        $this->set(compact('sectors','filters'));
     }
-    public function view($id)
+    public function view($id,ListOrders $orders)
     {
         Access::pcm($this->currentUser);$activity=$this->activity((int)$id);
         if($this->request->is('post')){
@@ -39,6 +49,8 @@ class FilaPcmController extends OperacaoController
         ]])->orderBy(['Auditorias.created'=>'DESC','Auditorias.id'=>'DESC']);
         [$history,$historyPage,$historyPages,$historyTotal]=$this->sectionPage($historyQuery,'historico_pagina',20);
         $completion=OrderProgress::status((int)$id);
+        $presentation=(new OrderDescriptions($orders))->presentations([(int)$activity->id])[(int)$activity->id];
+        $this->set(compact('presentation'));
         $this->set(compact('activity','rows','supplies','supplyPage','supplyPages','supplyTotal','history','historyPage','historyPages','historyTotal','completion'));
     }
     private function sectionPage($query,string $key,int $limit): array

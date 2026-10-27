@@ -1,6 +1,5 @@
 <?php
 $this->assign('title','Registros da O.S. '.$activity->os_numero);
-$presentation=\App\Service\OsApresentacao::activity($activity);
 $admin=$currentUser->perfil==='ADMIN_PCM';
 $status=static fn($row):string=>$row->controle_pcm==='lancado'?'Lançado manualmente no TOTVS':($row->controle_pcm==='conferido'?'Conferido pelo PCM · pendente no TOTVS':'Pendente');
 $quantity=static fn($value):string=>str_replace('.',',',str_contains((string)$value,'.')?rtrim(rtrim((string)$value,'0'),'.'):(string)$value);

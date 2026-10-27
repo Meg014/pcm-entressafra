@@ -4,32 +4,81 @@ namespace App\Service;
 final class FilaPcm
 {
     private function db() { return Access::table('Apontamentos')->getConnection(); }
-    private function pendingQuery(): string
+    private function pendingQuery(array $filters=[]): string
     {
+        $sector=$filters['setor']??'';
+        $sectorWhere='';
+        if (ctype_digit((string)$sector) && (int)$sector>0) {
+            $sectorWhere=' AND c.area_curva_id='.(int)$sector;
+        } elseif (is_string($sector) && preg_match('/^equipe_(\d+)$/D',$sector,$match)) {
+            $sectorWhere=' AND a.caderno_id IS NULL AND a.setor_executante_id='.(int)$match[1];
+        } elseif ($sector!=='') {
+            $sectorWhere=' AND 1=0';
+        }
         return "SELECT a.id,a.os_numero,a.os_filial,a.servico,a.bem,s.nome AS setor,
             COALESCE(p.quantidade,0) AS quantidade,COALESCE(p.quantidade,0) AS apontamentos_pendentes,
             COALESCE(i.quantidade,0) AS insumos_pendentes,COALESCE(p.minutos,0) AS minutos,
             CASE WHEN p.recebido IS NULL THEN i.recebido WHEN i.recebido IS NULL THEN p.recebido
                  WHEN p.recebido < i.recebido THEN p.recebido ELSE i.recebido END AS recebido
             FROM atividades a LEFT JOIN setores s ON s.id=a.setor_executante_id
+            LEFT JOIN cadernos c ON c.id=a.caderno_id
             LEFT JOIN (SELECT atividade_id,COUNT(*) AS quantidade,SUM(minutos) AS minutos,MIN(created) AS recebido
                 FROM apontamentos WHERE NOT cancelado AND controle_pcm IN ('pendente','conferido') GROUP BY atividade_id) p ON p.atividade_id=a.id
             LEFT JOIN (SELECT atividade_id,COUNT(*) AS quantidade,MIN(created) AS recebido
                 FROM insumos WHERE controle_pcm='pendente' GROUP BY atividade_id) i ON i.atividade_id=a.id
-            WHERE (p.quantidade>0 OR i.quantidade>0)".(PeriodoContexto::id()!==null?' AND a.entressafra_id='.(int)PeriodoContexto::id():'');
+            WHERE (p.quantidade>0 OR i.quantidade>0)".(PeriodoContexto::id()!==null?' AND a.entressafra_id='.(int)PeriodoContexto::id():'').$sectorWhere;
     }
-    public function queue($user,?int $page=null): array
+    public function queue($user,?int $page=null,array $filters=[]): array
     {
         Access::pcm($user);
-        $rows=$this->db()->execute($this->pendingQuery().' ORDER BY recebido,a.id'.($page===null?'':' LIMIT 10 OFFSET '.((max(1,$page)-1)*10)))->fetchAll('assoc');
+        $progress=$filters['evolucao']??'';
+        $rows=$this->db()->execute($this->pendingQuery($filters).' ORDER BY recebido,a.id'.($page===null||$progress!==''?'':' LIMIT 10 OFFSET '.((max(1,$page)-1)*10)))->fetchAll('assoc');
         foreach($rows as &$row)$row+=OrderProgress::status((int)$row['id']);
         unset($row);
+        if ($progress!=='') {
+            $rows=array_values(array_filter($rows,static fn(array $row): bool=>match($progress) {
+                'zero'=>(float)$row['percentual_atual']===0.0,
+                'andamento'=>(float)$row['percentual_atual']>0 && (float)$row['percentual_atual']<100,
+                'concluidas'=>(float)$row['percentual_atual']===100.0,
+                default=>false,
+            }));
+            if ($page!==null) { $rows=array_slice($rows,(max(1,$page)-1)*10,10); }
+        }
         return $rows;
     }
-    public function queueCount($user): int
+    public function queueCount($user,array $filters=[]): int
     {
         Access::pcm($user);
-        return (int)$this->db()->execute('SELECT COUNT(*) AS total FROM ('.$this->pendingQuery().') pendencias')->fetch('assoc')['total'];
+        if (($filters['evolucao']??'')!=='') { return count($this->queue($user,null,$filters)); }
+        return (int)$this->db()->execute('SELECT COUNT(*) AS total FROM ('.$this->pendingQuery($filters).') pendencias')->fetch('assoc')['total'];
+    }
+    public function queuePage($user,int $requested,array $filters=[]): array
+    {
+        // Resolve evolution once, filter on the server, then count and paginate the same result.
+        $filtered=($filters['evolucao']??'')!==''?$this->queue($user,null,$filters):null;
+        $total=$filtered===null?$this->queueCount($user,$filters):count($filtered);
+        $pages=max(1,(int)ceil($total/10));$page=max(1,min($requested,$pages));
+        $rows=$filtered===null?$this->queue($user,$page,$filters):array_slice($filtered,($page-1)*10,10);
+        return compact('rows','total','page','pages');
+    }
+    public function sectorOptions($user): array
+    {
+        Access::pcm($user);$options=[];$season=PeriodoContexto::id();
+        if ($season!==null) {
+            foreach ((new SetoresApresentacao())->availableAreas($season)->orderBy(['nome'=>'ASC'])->all() as $area) {
+                $options[(string)$area->id]=$area->nome;
+            }
+        }
+        // Match the fallback sector already displayed for orders without a notebook.
+        $query=Access::activityScope(Access::table('Atividades')->find(),$user)
+            ->select(['setor_executante_id'])->where(['caderno_id IS'=>null,'setor_executante_id IS NOT'=>null]);
+        $ids=$query->all()->extract('setor_executante_id')->toList();
+        if ($ids) {
+            foreach (Access::table('Setores')->find()->where(['id IN'=>$ids])->orderBy(['nome'=>'ASC'])->all() as $sector) {
+                $options['equipe_'.$sector->id]=OsApresentacao::equipe($sector->nome).' (sem caderno)';
+            }
+        }
+        return $options;
     }
     public function metrics(array $ids): array
     {

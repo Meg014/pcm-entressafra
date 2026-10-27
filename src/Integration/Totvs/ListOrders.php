@@ -5,10 +5,11 @@ namespace App\Integration\Totvs;
 final class ListOrders
 {
     public function __construct(private ?\Closure $reader=null) {}
-    public function find(array $numbers): array
+    public function find(array $numbers,string $branch='01'): array
     {
         if(!$numbers || count($numbers)>100)throw new \DomainException('Consulte de 1 a 100 números por bloco.');
-        $params=['filial'=>'01'];
+        if (strlen($branch)>2 || ($branch!=='' && !ctype_digit($branch))) { throw new \DomainException('Filial de O.S. inválida.'); }
+        $params=['filial'=>$branch];
         foreach(range(0,99) as $i) {
             $number=$numbers[$i]??'';
             if(!is_string($number)||($number!==''&&!preg_match('/^[0-9]{6}$/D',$number)))throw new \DomainException('Número de O.S. inválido.');

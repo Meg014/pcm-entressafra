@@ -20,6 +20,38 @@ O cadastro em planilha continua em `/insumos/add`. Insumos novos entram automati
 
 A fila, os detalhes e as confirmações são exclusivos de ADMIN_PCM e PCM. Funcionários operacionais continuam com o cadastro e a consulta de insumos nos setores autorizados. O contexto da entressafra da sessão é conferido na leitura e na gravação. Seleções de outra O.S. são recusadas e uma entressafra encerrada permanece somente para consulta. Nenhum vínculo com O.S., registro de horas, insumo, quantidade ou identidade é reescrito por uma confirmação.
 
+## Filtros da fila
+
+`/fila-pcm` possui filtros GET por Setor e Evolução da O.S., com botões Filtrar e Limpar filtros. Os padrões são Todos os setores e Todas as porcentagens. A seleção de setor acompanha a coluna exibida: classificação principal do caderno; para O.S. sem caderno, a equipe executante aparece como opção identificada com “sem caderno”. As opções respeitam a entressafra selecionada.
+
+As faixas são 0% (inclui ausência de evolução), em andamento (maior que zero e menor que 100) e 100% — Concluídas. A consulta usa `OrderProgress::status`, a mesma fonte da evolução já exibida na fila, antes de contar e paginar os resultados. A situação de encerramento no TOTVS não define a conclusão. O.S. com 100% continuam aparecendo enquanto houver pendências de horas ou insumos.
+
+Os parâmetros `setor` e `evolucao` permanecem nos links da paginação; uma nova consulta ou limpeza retorna à primeira página. Filtros inválidos são recusados. Nenhuma alteração de schema ou gravação de evolução, apontamentos, insumos ou TOTVS é realizada.
+
+Validação dos filtros: 12 testes da fila e 175 asserções aprovados; 47 verificações Chrome entre desktop, tablet e celular; 32 combinações de filtros e totais conferidas no PostgreSQL local em transação somente leitura.
+
+```powershell
+$env:FILA_FILTER_PREVIEW='1'
+php vendor/phpunit/phpunit/phpunit tests/TestCase/Controller/FilaPcmUnificadaTest.php
+powershell -ExecutionPolicy Bypass -File tools/test_apontamentos_batch_browser.ps1 -Preview fila-filtros-preview.html -TestScript test_fila_filters_browser.js
+```
+
+## Descrição real da O.S.
+
+O Novo apontamento lê `STJ010.TJ_OBSERVA AS descricao_totvs` pelas consultas `OrderQueries`, com conversão de encoding em `Orders::mapRow`. A fila e o detalhe usavam apenas a descrição complementar local e o snapshot do vínculo; os vínculos antigos das O.S. 005316, 005525 e 005897 não continham esse campo, causando “Descrição não informada”.
+
+`OrderDescriptions` agora completa a apresentação da página com `ListOrders`, reutilizando `ListOrderQueries::numbers`, a conexão `protheus` existente e o mesmo mapeamento do autocomplete. Os números permanecem strings com zeros à esquerda, agrupados por filial em blocos de até 100. Somente as O.S. da página são consultadas; identidades ausentes, divergentes ou ambíguas são descartadas. A consulta histórica inclui O.S. encerradas.
+
+A descrição complementar local mantém prioridade e não exige consulta remota. Sem uma descrição remota válida, permanece a apresentação local/snapshot existente. Uma falha do TOTVS não bloqueia a consulta dos apontamentos e insumos. A fila e “Ver registros” recebem a mesma apresentação, sem alterar colunas, equipamento, setor, evolução ou confirmações. Nenhum vínculo ou snapshot é atualizado pela consulta; não há migration.
+
+Conferência real em modo leitura: 005316 retornou **MANUTENÇÃO CORRETIVA ILUMINAÇÃO**, 005525 retornou **DESMONTAGEM E MONTAGEM CORRENTE E TALISCAS DA ESTEIRA METALICA** e 005897 retornou **DESMONTAGEM 4 T**. A fila e os três detalhes foram validados por HTTP no servidor local; hashes das tabelas de atividades, apontamentos, insumos, evolução e auditorias permaneceram iguais.
+
+Testes automatizados cobrem consulta em lote, filtragem antes do enriquecimento, complemento local, snapshots históricos, ausência, ambiguidade, filial divergente, resposta vazia e indisponibilidade do TOTVS, além das permissões e dos filtros existentes.
+
+```powershell
+php vendor/phpunit/phpunit/phpunit tests/TestCase/Controller/FilaPcmUnificadaTest.php tests/TestCase/Integration/Totvs/ListOrdersTest.php tests/TestCase/Integration/Totvs/OrdersTest.php tests/TestCase/Integration/Totvs/QueriesTest.php
+```
+
 ## Migration aditiva
 
 `20261026130000_AddControlePcmInsumos.php` adiciona:
