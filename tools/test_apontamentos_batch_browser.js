@@ -21,6 +21,14 @@ if(window.innerWidth>=760)check(first.getBoundingClientRect().height<65,'Linha c
 ['22102026','0700','1100'].forEach((v,i)=>{fields[i].value=v;fields[i].dispatchEvent(new Event('input'));});
 check(fields[0].value==='22/10/2026'&&fields[1].value==='07:00','Máscaras de data e hora');
 check(first.querySelector('.entry-duration').textContent.includes('4h 0min'),'Duração de quatro horas');
+check(fields.length===5&&[...fields].slice(1).every(f=>!f.required),'Quatro horários opcionais');
+const setHours=values=>values.forEach((v,i)=>{fields[i+1].value=v;fields[i+1].dispatchEvent(new Event('input'));});
+setHours(['','','1200','1400']);check([...fields].every(f=>f.checkValidity())&&first.querySelector('.entry-duration').textContent.includes('2h 0min'),'Aceita somente tarde');
+setHours(['0700','1100','1200','1700']);check([...fields].every(f=>f.checkValidity())&&first.querySelector('.entry-duration').textContent.includes('9h 0min'),'Soma períodos sem intervalo');
+setHours(['0700','1300','1200','1700']);check(!fields[3].checkValidity(),'Bloqueia sobreposição dos períodos');
+setHours(['','','1200','']);check(!fields[4].checkValidity(),'Exige par completo no período');
+setHours(['','','','']);check(!fields[1].checkValidity(),'Exige pelo menos um período');
+setHours(['0700','1100','','']);
 first.querySelector('textarea').value='Preservar serviço';add.click();add.click();
 check(lines.children.length===3,'Adiciona linhas independentes');
 check(first.querySelector('textarea').value==='Preservar serviço','Preserva dados ao adicionar');

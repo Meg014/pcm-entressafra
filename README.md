@@ -1,5 +1,7 @@
 # PCM_ControleEntressafra
 
+Apontamentos com manhã e/ou tarde, totais sem intervalo e conflitos por período: veja [estrutura e validação](docs/APONTAMENTOS_DOIS_PERIODOS.md).
+
 Navegação atual: escolha de entressafra na entrada, contexto de sessão, datas e cadernos em Setores e menu administrativo simplificado. Veja [como conferir](docs/NAVEGACAO_E_CONTEXTO_ENTRESSAFRA.md).
 
 Regra atual da Curva S: área principal pelo caderno, equipe executante independente, vínculo por lista e demonstração isolada. Veja [CURVA_CADERNOS_E_LISTAS.md](docs/CURVA_CADERNOS_E_LISTAS.md).

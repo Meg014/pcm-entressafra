@@ -7,6 +7,18 @@ final class TimeEntries
     public function __construct(private GatewayInterface $totvs) {}
     public static function formInput(array $input): array
     {
+        if (array_intersect(['hora_inicio_manha','hora_fim_manha','hora_inicio_tarde','hora_fim_tarde'], array_keys($input))) {
+            foreach (['manha','tarde'] as $period) {
+                $from=$input['hora_inicio_'.$period]??''; $to=$input['hora_fim_'.$period]??'';
+                if ($from === '' && $to === '') { $input['inicio_'.$period]=null; $input['fim_'.$period]=null; continue; }
+                $converted=self::formInput(['data_servico'=>$input['data_servico']??null,'hora_inicial'=>$from,'hora_final'=>$to,'termina_dia_seguinte'=>$input['termina_dia_seguinte']??'0']);
+                $input['inicio_'.$period]=$converted['inicio']; $input['fim_'.$period]=$converted['fim'];
+            }
+            EntryPeriods::intervals($input);
+            $input['inicio']=$input['inicio_manha']??$input['inicio_tarde'];
+            $input['fim']=$input['fim_tarde']??$input['fim_manha'];
+            return $input;
+        }
         if (!array_intersect(['data_servico','hora_inicial','hora_final','termina_dia_seguinte'],array_keys($input))) { return $input; }
         $date=$input['data_servico']??null;$from=$input['hora_inicial']??null;$to=$input['hora_final']??null;
         if(!is_string($date)||!is_string($from)||!is_string($to))throw new \DomainException('Informe a data do serviço e as duas horas.');
@@ -45,6 +57,8 @@ final class TimeEntries
         $rows = Access::table('Apontamentos')->find()->where($where)->orderBy(['inicio' => 'ASC'])->all();
         $result = [];
         foreach ($rows as $row) {
+            $overlap=false; foreach (EntryPeriods::stored($row) as [$from,$to]) { if ($from->format('Y-m-d H:i:s') < $end && $to->format('Y-m-d H:i:s') > $start) { $overlap=true; } }
+            if (!$overlap) { continue; }
             $snapshot = json_decode($row->snapshot, true, 512, JSON_THROW_ON_ERROR);
             $result[] = ['nome' => $row->funcionario_nome, 'matricula' => $row->funcionario_matricula, 'filial' => $row->funcionario_filial, 'inicio' => $row->inicio->setTimezone('America/Sao_Paulo')->format('d/m/Y H:i'), 'fim' => $row->fim->setTimezone('America/Sao_Paulo')->format('d/m/Y H:i'), 'os' => $snapshot['os_numero'], 'setor' => $snapshot['setor_nome'], 'caderno' => $snapshot['caderno_nome'], 'descricao' => $row->descricao];
         }
@@ -87,8 +101,25 @@ final class TimeEntries
                 if ($existing && $user->perfil === 'RESPONSAVEL_SETOR') { throw new \Cake\Http\Exception\ForbiddenException('Correções são exclusivas do PCM até definição da política de autorização.'); }
                 $reason = trim((string)($input['motivo'] ?? ''));
                 if ($existing && $reason === '') { throw new \DomainException('Informe o motivo da correção.'); }
-                [$start, $end, $minutes] = self::interval((string)($input['inicio'] ?? ''), (string)($input['fim'] ?? ''));
-                if ($existing && ($start!==$existing->inicio->format('Y-m-d H:i:s') || $end!==$existing->fim->format('Y-m-d H:i:s'))) { Access::admin($user); }
+                $periods = EntryPeriods::intervals($input);
+                $start=$periods[0][0]; $end=$periods[array_key_last($periods)][1]; $minutes=array_sum(array_column($periods,2));
+                $periodData=array_fill_keys(EntryPeriods::FIELDS,null);
+                foreach (['manha','tarde'] as $period) {
+                    if (!empty($input['inicio_'.$period])) {
+                        [$periodData['inicio_'.$period],$periodData['fim_'.$period]]=self::interval($input['inicio_'.$period],$input['fim_'.$period]);
+                    }
+                }
+                if ($existing) {
+                    foreach ($periodData as $field=>$value) {
+                        $historical=!$existing->inicio_manha && !$existing->inicio_tarde;
+                        $old=$existing->$field?->format('Y-m-d H:i:s');
+                        if ($historical && $field==='inicio_manha') { $old=$existing->inicio->format('Y-m-d H:i:s'); }
+                        if ($historical && $field==='fim_manha') { $old=$existing->fim->format('Y-m-d H:i:s'); }
+                        if (!array_intersect(EntryPeriods::FIELDS,array_keys($input))) { continue; }
+                        if ($old!==$value) { Access::admin($user); }
+                    }
+                }
+                if ($existing && ($minutes!==(int)$existing->minutos || $start!==$existing->inicio->format('Y-m-d H:i:s') || $end!==$existing->fim->format('Y-m-d H:i:s'))) { Access::admin($user); }
                 $description = $input['descricao'] ?? null;
                 if (!is_string($description) || trim($description) === '' || mb_strlen($description) > 10000) { throw new \DomainException('Informe o serviço realizado, com até 10.000 caracteres.'); }
                 if ($existing) {
@@ -109,13 +140,14 @@ final class TimeEntries
                     $season = Access::table('Entressafras')->get($activity->entressafra_id);
                     $snapshot = ['funcionario' => $employee, 'os_numero' => $activity->os_numero, 'os_filial' => $activity->os_filial, 'os_chave' => $activity->os_chave, 'servico' => $activity->servico, 'bem' => $activity->bem, 'setor_id' => $sector->id, 'setor_nome' => $sector->nome,'area_executante_totvs'=>$activity->area_executante_totvs,'area_fisica_referencia'=>$notebook?->area_fisica, 'caderno_id' => $notebook?->id, 'caderno_nome' => ($notebook?->nome??'Sem caderno'), 'entressafra_id' => $season->id, 'entressafra_nome' => $season->nome];
                 }
-                $conflicts = $this->conflicts($employee['chave'], $start, $end, $id);
+                $conflicts=[]; foreach ($periods as [$from,$to]) { $conflicts=array_merge($conflicts,$this->conflicts($employee['chave'],$from,$to,$id)); }
                 if ($conflicts) { throw new ConflictException($conflicts); }
                 if ($validateOnly) { return 0; }
                 $now = gmdate('Y-m-d H:i:s');
                 $data = ['atividade_id' => $activity->id, 'funcionario_chave' => $employee['chave'], 'funcionario_nome' => $employee['nome'], 'funcionario_matricula' => $employee['matricula'], 'funcionario_filial' => $employee['filial'], 'funcionario_vinculo' => $employee['vinculo'], 'snapshot' => json_encode($snapshot, JSON_THROW_ON_ERROR), 'inicio' => $start, 'fim' => $end, 'minutos' => $minutes, 'descricao' => $description, 'alterado_por' => $user->id, 'modified' => $now];
                 if (!$existing) { $data += ['criado_por' => $user->id, 'created' => $now, 'cancelado' => false, 'controle_pcm' => 'pendente']; }
                 else { $data['controle_pcm'] = 'pendente'; }
+                $data += $periodData;
                 $data['revisao_pcm']=$existing?(int)$existing->revisao_pcm+1:0;
                 $entity = $existing ?? Access::entity($table, []);
                 foreach ($data as $field => $value) { $entity->set($field, $value); }
@@ -126,8 +158,11 @@ final class TimeEntries
         } catch (\Cake\Database\Exception\QueryException $e) {
             if (str_contains($e->getMessage(), '23P01')) {
                 $old = $id ? $table->get($id) : null;
-                [$start, $end] = self::interval((string)$input['inicio'], (string)$input['fim']);
-                throw new ConflictException($this->conflicts($old?->funcionario_chave ?? (string)$input['funcionario_chave'], $start, $end, $id));
+                $conflicts=[];
+                foreach (EntryPeriods::intervals($input) as [$start,$end]) {
+                    $conflicts=array_merge($conflicts,$this->conflicts($old?->funcionario_chave ?? (string)$input['funcionario_chave'], $start, $end, $id));
+                }
+                throw new ConflictException($conflicts);
             }
             throw $e;
         }
@@ -157,7 +192,8 @@ final class TimeEntries
         foreach ($prepared as $i => $a) {
             foreach ($prepared as $j => $b) {
                 if ($j <= $i || empty($a['funcionario_chave']) || $a['funcionario_chave'] !== ($b['funcionario_chave'] ?? null)) { continue; }
-                if ($a['inicio'] < $b['fim'] && $a['fim'] > $b['inicio']) {
+                $overlap=false; foreach (EntryPeriods::intervals($a) as [$af,$at]) { foreach (EntryPeriods::intervals($b) as [$bf,$bt]) { if ($af < $bt && $at > $bf) { $overlap=true; } } }
+                if ($overlap) {
                     $message = 'Funcionário '.($a['funcionario_rotulo'] ?? $a['funcionario_chave']).': conflito entre linhas '.($i+1).' e '.($j+1).' ('.$a['inicio'].' até '.$a['fim'].' / '.$b['inicio'].' até '.$b['fim'].').';
                     $errors[$i] = $message; $errors[$j] = $message;
                 }

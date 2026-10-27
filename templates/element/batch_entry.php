@@ -1,4 +1,8 @@
 <?php
+if (!array_key_exists('hora_inicio_manha',$line)) {
+    $line['hora_inicio_manha']=$line['hora_inicial']??'';
+    $line['hora_fim_manha']=$line['hora_final']??'';
+}
 $value=static fn(string $key): string => is_scalar($line[$key]??null)?(string)$line[$key]:'';
 $prefix='apontamentos.'.$index.'.';
 ?>
@@ -8,8 +12,8 @@ $prefix='apontamentos.'.$index.'.';
 <div class="entry-employee">
 <?= $this->element('batch_employee',compact('index','value')) ?>
 </div>
-<?php foreach(['data_servico'=>['Data','DD/MM/AAAA',10],'hora_inicial'=>['Hora início','HH:MM',5],'hora_final'=>['Hora fim','HH:MM',5]] as $field=>[$label,$placeholder,$length]): ?>
-<div><?= $this->Form->control($prefix.$field,['type'=>'text','label'=>$label,'value'=>$value($field),'placeholder'=>$placeholder,'maxlength'=>$length,'inputmode'=>'numeric','class'=>'form-control','required'=>true,'data-mask'=>$field==='data_servico'?'date':'time']) ?></div>
+<?php foreach(['data_servico'=>['Data','DD/MM/AAAA',10],'hora_inicio_manha'=>['Início manhã','HH:MM',5],'hora_fim_manha'=>['Fim manhã','HH:MM',5],'hora_inicio_tarde'=>['Início tarde','HH:MM',5],'hora_fim_tarde'=>['Fim tarde','HH:MM',5]] as $field=>[$label,$placeholder,$length]): ?>
+<div><?= $this->Form->control($prefix.$field,['type'=>'text','label'=>$label,'value'=>$value($field),'placeholder'=>$placeholder,'maxlength'=>$length,'inputmode'=>'numeric','class'=>'form-control','required'=>$field==='data_servico','data-mask'=>$field==='data_servico'?'date':'time']) ?></div>
 <?php endforeach; ?>
 <div class="service-autocomplete" data-service-lookup data-url="<?= h($this->Url->build(['controller'=>'Apontamentos','action'=>'servicos'])) ?>">
 <?= $this->Form->control($prefix.'descricao',['type'=>'textarea','label'=>'Serviço realizado','value'=>$value('descricao'),'class'=>'form-control','rows'=>1,'maxlength'=>10000,'required'=>true,'role'=>'combobox','aria-autocomplete'=>'list','aria-expanded'=>'false','aria-controls'=>'service-options-'.$index,'autocomplete'=>'off']) ?>

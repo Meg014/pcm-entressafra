@@ -3,7 +3,7 @@
 .entry-sheet #os-autocomplete>small,.entry-sheet #os-aviso:not([data-lookup-error="1"]),.entry-sheet [id$="funcionario-aviso"]:not([data-lookup-error="1"]),.entry-sheet [id$="funcionario-resumo"],.entry-duration{display:none!important}
 .entry-sheet #os-aviso[data-lookup-error="1"],.entry-sheet [id$="funcionario-aviso"][data-lookup-error="1"]{color:#b42318!important;font-size:.75rem;margin:3px 0 0!important}
 .entry-sheet #os-resumo{padding:8px 12px;margin-bottom:0;font-size:.85rem}
-.entry-head,.entry-fields{display:grid;grid-template-columns:minmax(170px,1.6fr) 104px 78px 78px minmax(140px,2fr) 32px;gap:6px;align-items:start}
+.entry-head,.entry-fields{display:grid;grid-template-columns:minmax(110px,1.6fr) 94px repeat(4,minmax(58px,.65fr)) minmax(100px,2fr) 32px;gap:6px;align-items:start}
 .entry-head{padding:8px 6px 8px 28px;background:#f1f4f7;border:1px solid #dce2e8;border-radius:5px 5px 0 0;font-size:.8rem;font-weight:600}
 .entry-line{position:relative;padding:6px 6px 6px 28px;border:1px solid #dce2e8;border-top:0;background:#fff}
 .entry-line:focus-within{background:#f8fbff}
@@ -39,3 +39,5 @@
 .supplies-sheet .entry-head,.supplies-sheet .entry-fields{grid-template-columns:minmax(180px,1.5fr) 114px minmax(160px,2fr) 130px 32px}
 @media(max-width:759px){.supplies-sheet .entry-fields{grid-template-columns:1fr 1fr 32px}.supplies-sheet .entry-fields>div:nth-child(3){grid-column:1 / 3}.supplies-sheet .entry-fields>div:nth-child(4){grid-column:1 / 3}.supplies-sheet .entry-fields>div:last-child{grid-column:3;grid-row:1}}/* In normal flow: suggestions expand their own spreadsheet row. */
 .service-autocomplete{min-width:0}.service-options{margin-top:3px;max-height:180px;overflow-y:auto;border:1px solid #b8c7d1;border-radius:4px;background:#fff;color:#172b3a}.service-options[hidden]{display:none}.service-options [role=option]{padding:7px 9px;cursor:pointer;overflow-wrap:anywhere;font-size:.875rem}.service-options [role=option]:hover,.service-options [aria-selected=true]{background:#e2f1f6}
+
+@media(max-width:759px){.entry-sheet:not(.supplies-sheet) .entry-fields>div:nth-child(5){grid-column:1}.entry-sheet:not(.supplies-sheet) .entry-fields>div:nth-child(6){grid-column:2}.entry-sheet:not(.supplies-sheet) .entry-fields>div:nth-child(7){grid-column:1 / 3}}

@@ -9,7 +9,7 @@ if (!is_array($lines) || !$lines) { $lines=[[]]; }
 <?= $this->Form->hidden('quantidade_linhas',['value'=>count($lines),'id'=>'entry-count']) ?>
 <?= $this->element('order_autocomplete',['quickOrder'=>true,'showOrderProgress'=>true]) ?>
 <div id="entry-order-status" class="mb-3 small text-secondary" role="status" data-order="<?= h(json_encode($selectedOrder,JSON_THROW_ON_ERROR)) ?>" <?= $selectedOrder?'':'hidden' ?>><?php if($selectedOrder): ?>Percentual atual da O.S.: <?= h($selectedOrder['percentual_atual']??0) ?>%<?php endif; ?></div>
-<div class="entry-head" aria-hidden="true"><span>Funcionário</span><span>Data</span><span>Hora início</span><span>Hora fim</span><span>Serviço realizado</span><span>Ações</span></div>
+<div class="entry-head" aria-hidden="true"><span>Funcionário</span><span>Data</span><span>Início manhã</span><span>Fim manhã</span><span>Início tarde</span><span>Fim tarde</span><span>Serviço realizado</span><span>Ações</span></div>
 <div id="entry-lines">
 <?php foreach(array_values($lines) as $index=>$line): ?>
 <?= $this->element('batch_entry',['index'=>$index,'line'=>is_array($line)?$line:[],'error'=>$batchErrors[$index]??'']) ?>

@@ -13,21 +13,29 @@
  const init=row=>{
   window.initEmployeeAutocomplete(row.querySelector('[data-lookup]'));
   window.initServiceAutocomplete(row.querySelector('[data-service-lookup]'));
-  const fields=[...row.querySelectorAll('[data-mask]')], [date,start,end]=fields;
+  const fields=[...row.querySelectorAll('[data-mask]')], [date,start,end,afternoonStart,afternoonEnd]=fields;
   const validDate=v=>{const m=/^(\d{2})\/(\d{2})\/(\d{4})$/.exec(v);if(!m||+m[3]<1)return false;const d=new Date(0);d.setUTCFullYear(+m[3],+m[2]-1,+m[1]);return d.getUTCFullYear()===+m[3]&&d.getUTCMonth()===+m[2]-1&&d.getUTCDate()===+m[1];};
   const time=v=>/^(?:[01]\d|2[0-3]):[0-5]\d$/.test(v);
   const minutes=v=>+v.slice(0,2)*60 + +v.slice(3);
   const update=()=>{
    date.setCustomValidity(date.value&&!validDate(date.value)?'Informe uma data real no formato DD/MM/AAAA.':'');
-   [start,end].forEach(f=>f.setCustomValidity(f.value&&!time(f.value)?'Informe uma hora válida entre 00:00 e 23:59.':''));
-   let output='';
-   if(validDate(date.value)&&time(start.value)&&time(end.value)){
-    const duration=minutes(end.value)-minutes(start.value);
-    if(duration<=0){end.setCustomValidity('A hora final deve ser maior que a inicial, na mesma data.');output='Intervalo inválido.';}
-    else output='Duração: '+Math.floor(duration/60)+'h '+duration%60+'min';
+   const times=[start,end,afternoonStart,afternoonEnd];
+   times.forEach(f=>f.setCustomValidity(f.value&&!time(f.value)?'Informe uma hora válida entre 00:00 e 23:59.':''));
+   let duration=0, invalid=false;
+   for(const [from,to] of [[start,end],[afternoonStart,afternoonEnd]]) {
+    if(!from.value&&!to.value)continue;
+    if(!from.value||!to.value){(!from.value?from:to).setCustomValidity('Preencha início e fim do período.');invalid=true;continue;}
+    if(!time(from.value)||!time(to.value)){invalid=true;continue;}
+    const diff=minutes(to.value)-minutes(from.value);
+    if(diff<=0){to.setCustomValidity('O fim deve ser posterior ao início, na mesma data.');invalid=true;}else duration+=diff;
    }
-   row.querySelector('.entry-duration').textContent=output;
-   end.title=output;
+   if(times.every(f=>!f.value)){start.setCustomValidity('Preencha pelo menos um período completo.');invalid=true;}
+   if(time(end.value)&&time(afternoonStart.value)&&minutes(end.value)>minutes(afternoonStart.value)){
+    afternoonStart.setCustomValidity('Os períodos devem estar em ordem e sem sobreposição.');invalid=true;
+   }
+   const text=invalid?'':'Duração: '+Math.floor(duration/60)+'h '+duration%60+'min';
+   row.querySelector('.entry-duration').textContent=text;
+   end.title=text;
   };
   fields.forEach(f=>f.addEventListener('input',()=>{
    const digits=v=>v.replace(/\D/g,''); const before=digits(f.value.slice(0,f.selectionStart)).length;

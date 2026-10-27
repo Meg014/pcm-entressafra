@@ -745,7 +745,7 @@ class EtapaDoisTest extends TestCase
     public function testMaskedDateFormCreatesAndEditsFullStoredDatetimes(): void
     {
         $this->mockService(\App\Integration\Totvs\GatewayInterface::class,fn()=>new FakeTotvs());$this->enableCsrfToken();
-        $this->get('/apontamentos/add');$this->assertResponseOk();$this->assertResponseNotContains('datetime-local');$this->assertResponseContains('name="apontamentos[0][data_servico]"');$this->assertResponseContains('name="apontamentos[0][hora_inicial]"');$this->assertResponseContains('name="apontamentos[0][hora_final]"');
+        $this->get('/apontamentos/add');$this->assertResponseOk();$this->assertResponseNotContains('datetime-local');$this->assertResponseContains('name="apontamentos[0][data_servico]"');$this->assertResponseContains('name="apontamentos[0][hora_inicio_manha]"');$this->assertResponseContains('name="apontamentos[0][hora_fim_manha]"');
         $data=['atividade_id'=>$this->activities[0],'funcionario_chave'=>'pessoa-1','data_servico'=>'22/10/2026','hora_inicial'=>'07:30','hora_final'=>'11:30','termina_dia_seguinte'=>'0','descricao'=>'Serviço com máscara'];
         $this->post('/apontamentos/add',$data);$this->assertRedirect();$row=Access::table('Apontamentos')->find()->firstOrFail();$this->assertSame(240,$row->minutos);$this->assertSame('2026-10-22 10:30:00',$row->inicio->format('Y-m-d H:i:s'));
         $this->get('/apontamentos/edit/'.$row->id);$this->assertResponseOk();$this->assertResponseContains('value="22/10/2026"');$this->assertResponseContains('value="07:30"');$this->assertResponseNotContains('datetime-local');
@@ -926,5 +926,57 @@ class EtapaDoisTest extends TestCase
         $this->get('/insumos/add');$this->assertResponseOk();$this->assertResponseContains('Salvar insumos');$this->assertResponseContains('name="insumos[0][funcionario_chave]"');
         if(getenv('BATCH_PREVIEW'))file_put_contents(TMP.'supplies-preview.html',(string)$this->_response->getBody());
         $this->enableCsrfToken();$this->post('/insumos/add',['atividade_id'=>$this->activities[0],'quantidade_linhas'=>'1','insumos'=>[$this->supply()]]);$this->assertRedirect('/insumos');$this->assertSame(1,Access::table('Insumos')->find()->count());
+    }
+    private function splitInput(array $hours=['07:00','11:00','12:00','17:00']): array
+    {
+        return ['atividade_id'=>$this->activities[0],'funcionario_chave'=>'pessoa-1','data_servico'=>'21/10/2026','hora_inicio_manha'=>$hours[0],'hora_fim_manha'=>$hours[1],'hora_inicio_tarde'=>$hours[2],'hora_fim_tarde'=>$hours[3],'descricao'=>'Dois períodos'];
+    }
+    public function testSplitPeriodsSaveAuditPcmAndAdminCorrection(): void
+    {
+        $id=$this->entries->save($this->responsavel,$this->splitInput());
+        $row=Access::table('Apontamentos')->get($id);
+        $this->assertSame(540,$row->minutos);
+        $this->assertSame(1,Access::table('Apontamentos')->find()->count());
+        $audit=Access::table('Auditorias')->find()->where(['apontamento_id'=>$id])->firstOrFail();
+        $this->assertStringContainsString('inicio_tarde',$audit->depois);
+        // The lunch gap remains available to other entries for this employee.
+        $gap=$this->entries->save($this->responsavel,$this->input('2026-10-21T11:00','2026-10-21T12:00'));
+        $this->assertGreaterThan(0,$gap);
+        $this->get('/apontamentos/view/'.$id);$this->assertResponseOk();$this->assertResponseContains('Manhã:');$this->assertResponseContains('Tarde:');$this->assertResponseContains('9,00');
+        $this->get('/fila-pcm/os/'.$this->activities[0]);$this->assertResponseOk();$this->assertResponseContains('Manhã:');$this->assertResponseContains('Tarde:');$this->assertResponseContains('9,00h');
+        $changed=$this->splitInput(['07:00','10:00','12:00','16:00'])+['motivo'=>'Correção administrativa'];
+        $this->entries->save($this->admin,$changed,$id);
+        $this->assertSame(420,Access::table('Apontamentos')->get($id)->minutos);
+        $this->expectException(\Cake\Http\Exception\ForbiddenException::class);
+        $this->entries->save($this->pcm,$this->splitInput()+['motivo'=>'Sem permissão'],$id);
+    }
+    public function testSplitPeriodsConflictAndBatchAtomicity(): void
+    {
+        $this->entries->save($this->responsavel,$this->input('2026-10-21T13:00','2026-10-21T14:00'));
+        try { $this->entries->save($this->responsavel,$this->splitInput());$this->fail('Conflito esperado'); }
+        catch (ConflictException $e) { $this->assertNotEmpty($e->conflicts); }
+        $rows=[$this->splitInput(['07:00','11:00','','']),$this->splitInput(['','','13:00','15:00'])];
+        try {$this->entries->saveBatch($this->responsavel,['atividade_id'=>$this->activities[0],'apontamentos'=>$rows]);$this->fail('Lote deveria falhar');}
+        catch (\App\Service\BatchEntryException $e) {$this->assertSame(1,Access::table('Apontamentos')->find()->count());}
+    }
+    public function testSplitPeriodsBatchAllowsGapAndDifferentEmployees(): void
+    {
+        $rows=[$this->splitInput(),$this->splitInput(['11:00','12:00','','']),array_replace($this->splitInput(),['funcionario_chave'=>'pessoa-2'])];
+        $ids=$this->entries->saveBatch($this->responsavel,['atividade_id'=>$this->activities[0],'apontamentos'=>$rows]);
+        $this->assertCount(3,$ids);
+        $this->assertSame(1140,(int)Access::table('Apontamentos')->find()->select(['total'=>Access::table('Apontamentos')->find()->func()->sum('minutos')])->first()->total);
+    }
+    public function testSplitPeriodsSinglePeriodPersistenceAndLegacyPermissions(): void
+    {
+        foreach ([[['07:00','11:00','',''],240],[['','','12:00','14:00'],120]] as [$hours,$minutes]) {
+            $id=$this->entries->save($this->responsavel,$this->splitInput($hours));
+            $this->assertSame($minutes,Access::table('Apontamentos')->get($id)->minutos);
+            $this->get('/apontamentos/edit/'.$id);$this->assertResponseOk();
+            $this->entries->save($this->pcm,$this->splitInput($hours)+['motivo'=>'Revisão da descrição'],$id);
+        }
+        $legacy=$this->entries->save($this->responsavel,$this->input('2026-10-22T07:00','2026-10-22T11:00'));
+        $input=$this->splitInput(['07:00','11:00','','']);$input['data_servico']='22/10/2026';$input['motivo']='Descrição do legado';
+        $this->entries->save($this->pcm,$input,$legacy);
+        $this->assertSame(240,Access::table('Apontamentos')->get($legacy)->minutos);
     }
 }

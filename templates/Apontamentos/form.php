@@ -12,11 +12,21 @@
 $start=$row?->inicio?->setTimezone('America/Sao_Paulo');$end=$row?->fim?->setTimezone('America/Sao_Paulo');
 foreach(['inicio'=>'start','fim'=>'end'] as $old=>$target){$value=$this->request->getData($old);if(is_string($value)){$parsed=\DateTimeImmutable::createFromFormat('!Y-m-d\TH:i',$value,new \DateTimeZone('America/Sao_Paulo'));if($parsed)${$target}=$parsed;}}
 $posted=$this->request->getData();$values=['data_servico'=>$start?->format('d/m/Y')??'','hora_inicial'=>$start?->format('H:i')??'','hora_final'=>$end?->format('H:i')??''];
+$periods=$row?\App\Service\EntryPeriods::stored($row):[];
+if (!$row && $start && $end) { $periods=['manha'=>[$start,$end]]; }
+foreach (['manha','tarde'] as $period) {
+    $values['hora_inicio_'.$period]=isset($periods[$period])?$periods[$period][0]->setTimezone(new \DateTimeZone('America/Sao_Paulo'))->format('H:i'):'';
+    $values['hora_fim_'.$period]=isset($periods[$period])?$periods[$period][1]->setTimezone(new \DateTimeZone('America/Sao_Paulo'))->format('H:i'):'';
+}
+if (!array_key_exists('hora_inicio_manha',$posted) && array_key_exists('hora_inicial',$posted)) {
+    $values['hora_inicio_manha']=is_scalar($posted['hora_inicial'])?(string)$posted['hora_inicial']:'';
+    $values['hora_fim_manha']=is_scalar($posted['hora_final']??null)?(string)$posted['hora_final']:'';
+}
 foreach($values as $field=>$value){if(array_key_exists($field,$posted))$values[$field]=is_scalar($posted[$field])?(string)$posted[$field]:'';}
 ?>
 <div class="row g-3 mb-3">
 <div class="col-12"><?= $this->Form->control('data_servico',['label'=>'Data do serviço *','type'=>'text','value'=>$values['data_servico'],'placeholder'=>'DD/MM/AAAA','maxlength'=>10,'inputmode'=>'numeric','autocomplete'=>'off','class'=>'form-control','required'=>true,'readonly'=>$row&&$currentUser->perfil!=='ADMIN_PCM','data-time-mask'=>'date']) ?></div>
-<?php foreach(['hora_inicial'=>'Hora inicial *','hora_final'=>'Hora final *'] as $field=>$label): ?><div class="col-md-6"><?= $this->Form->control($field,['label'=>$label,'type'=>'text','value'=>$values[$field],'placeholder'=>'HH:MM','maxlength'=>5,'inputmode'=>'numeric','autocomplete'=>'off','class'=>'form-control','required'=>true,'readonly'=>$row&&$currentUser->perfil!=='ADMIN_PCM','data-time-mask'=>'time']) ?></div><?php endforeach; ?>
+<?php foreach(['hora_inicio_manha'=>'Início manhã','hora_fim_manha'=>'Fim manhã','hora_inicio_tarde'=>'Início tarde','hora_fim_tarde'=>'Fim tarde'] as $field=>$label): ?><div class="col-md-3"><?= $this->Form->control($field,['label'=>$label,'type'=>'text','value'=>$values[$field],'placeholder'=>'HH:MM','maxlength'=>5,'inputmode'=>'numeric','autocomplete'=>'off','class'=>'form-control','required'=>false,'readonly'=>$row&&$currentUser->perfil!=='ADMIN_PCM','data-time-mask'=>'time']) ?></div><?php endforeach; ?>
 
 </div>
 <p id="horas-calculadas" class="text-secondary" aria-live="polite">As horas serão calculadas pelo intervalo informado.</p>
