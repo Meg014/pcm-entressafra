@@ -9,6 +9,7 @@ final class Insumos
 
     public function saveBatch(int $actor,array $input): array
     {
+        if(isset($input['envio_chave']))return EnvioLote::run($actor,'insumos',$input,function()use($actor,$input){unset($input['envio_chave']);return $this->saveBatch($actor,$input);});
         $user=Access::actor($actor);$id=$input['atividade_id']??null;
         if(!is_scalar($id)||!ctype_digit((string)$id)||(int)$id<1||!Access::table('Atividades')->exists(['id'=>(int)$id]))throw new \DomainException('Selecione uma O.S. válida.');
         $activity=(new OperacaoRapida())->activity($user,(int)$id);
@@ -39,7 +40,7 @@ final class Insumos
         if($errors)throw new BatchEntryException($errors);
         $table=Access::table('Insumos');
         return $table->getConnection()->transactional(function()use($table,$prepared,$user,$activity):array{
-            if($table->getConnection()->getDriver() instanceof \Cake\Database\Driver\Postgres)$table->getConnection()->execute('SELECT id FROM entressafras WHERE id=? FOR UPDATE',[(int)$activity->entressafra_id]);
+            if($table->getConnection()->getDriver() instanceof \Cake\Database\Driver\Postgres)$table->getConnection()->execute('SELECT id FROM entressafras WHERE id=? FOR SHARE',[(int)$activity->entressafra_id]);
             PeriodoContexto::writable((int)$activity->entressafra_id);
             (new OperacaoRapida())->activity(Access::actor((int)$user->id),(int)$activity->id);
             $ids=[];foreach($prepared as $data){$entity=$table->saveOrFail(Access::entity($table,$data));$ids[]=(int)$entity->id;Access::audit($user,'insumo_criacao',null,null,['insumo_id'=>$entity->id]+$entity->toArray(),null,(int)$entity->id);}

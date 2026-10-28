@@ -1,5 +1,7 @@
 # PCM_ControleEntressafra
 
+Curva S automática por setor, baseada no modelo histórico e no calendário operacional, sem metas manuais ou pesos: veja [fórmula, fechamento, comando e testes](docs/CURVA_S_AUTOMATICA.md).
+
 Apontamentos com manhã e/ou tarde, totais sem intervalo e conflitos por período: veja [estrutura e validação](docs/APONTAMENTOS_DOIS_PERIODOS.md).
 
 Navegação atual: escolha de entressafra na entrada, contexto de sessão, datas e cadernos em Setores e menu administrativo simplificado. Veja [como conferir](docs/NAVEGACAO_E_CONTEXTO_ENTRESSAFRA.md).

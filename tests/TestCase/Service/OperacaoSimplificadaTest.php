@@ -40,12 +40,37 @@ class OperacaoSimplificadaTest extends TestCase
         $this->get('/apontamentos/add');$this->assertResponseNotContains('name="entressafra_id"');$this->assertResponseNotContains('name="setor_id"');$this->assertResponseNotContains('name="caderno_id"');$this->assertResponseNotContains('Cadastros administrativos');
         $this->post('/login',['login'=>'computador-1','senha'=>'teste123']);$this->assertResponseCode(403);
     }
+    public function testOperationalAccountsNeedNoSectorLinksButHumanResponsiblesStillDo(): void
+    {
+        $id=(new Users())->save($this->admin,['nome'=>'Computador 2','login'=>'computador2','senha'=>'teste123','perfil'=>'RESPONSAVEL_SETOR','computador_operacional'=>'1','ativo'=>'1']);
+        $this->assertSame(0,Access::table('UsuariosSetores')->find()->where(['usuario_id'=>$id])->count());
+        foreach($this->sectors as $sector)Access::sector(Access::actor($id),$sector);
+        $this->assertCount(2,Access::sectors(Access::actor($id)));
+        $this->expectException(\DomainException::class);
+        (new Users())->save($this->admin,['nome'=>'Responsável humano','login'=>'humano-sem-setor','senha'=>'teste123','perfil'=>'RESPONSAVEL_SETOR','ativo'=>'1']);
+    }
+    public function testBatchRetriesAreAtomicAndRejectChangedPayload(): void
+    {
+        $input=['atividade_id'=>(string)$this->activities[0],'envio_chave'=>bin2hex(random_bytes(16)),'apontamentos'=>[['funcionario_chave'=>'pessoa-reenvio','inicio'=>'2026-10-01T07:00','fim'=>'2026-10-01T09:00','descricao'=>'Reenvio de formulário']]];
+        $ids=$this->entries->saveBatch($this->computer,$input);$this->assertSame($ids,$this->entries->saveBatch($this->computer,$input));
+        $this->assertSame(1,Access::table('Apontamentos')->find()->where(['funcionario_chave'=>'pessoa-reenvio'])->count());
+        $this->assertSame(1,Access::table('Auditorias')->find()->where(['usuario_id'=>$this->computer,'acao'=>'envio_apontamentos'])->count());
+        $input['apontamentos'][0]['descricao']='Alterado após salvar';$this->expectException(\DomainException::class);$this->entries->saveBatch($this->computer,$input);
+    }
+    public function testFailedBatchDoesNotConsumeSubmissionKeyOrLeavePartialRows(): void
+    {
+        $input=['atividade_id'=>(string)$this->activities[0],'envio_chave'=>bin2hex(random_bytes(16)),'apontamentos'=>[['funcionario_chave'=>'pessoa-nova','inicio'=>'2026-10-01T07:00','fim'=>'2026-10-01T09:00','descricao'=>'']]];
+        try{$this->entries->saveBatch($this->computer,$input);$this->fail();}catch(\App\Service\BatchEntryException){}
+        $this->assertSame(0,Access::table('Auditorias')->find()->where(['acao'=>'envio_apontamentos'])->count());
+        $this->assertSame(0,Access::table('Apontamentos')->find()->count());
+        $input['apontamentos'][0]['descricao']='Corrigido';$this->assertCount(1,$this->entries->saveBatch($this->computer,$input));
+    }
     public function testLinkedOrderLookupRequiresActiveSeasonAndAuthorizedSectorAndPreservesNumber(): void
     {
         Access::table('Atividades')->updateAll(['os_numero'=>'005300'],['id'=>$this->activities[0]]);
         $this->auth($this->computer);$this->get('/operacao/ordens?q=0053');$this->assertResponseOk();$data=json_decode((string)$this->_response->getBody(),true);
         $this->assertCount(1,$data['results']);$this->assertSame('005300',$data['results'][0]['numero']);$this->assertSame('Descrição do caderno',$data['results'][0]['descricao_caderno']);
-        $this->get('/operacao/ordens?q=os-1');$this->assertResponseOk();$this->assertSame([],json_decode((string)$this->_response->getBody(),true)['results']);
+        $this->get('/operacao/ordens?q=os-1');$this->assertResponseOk();$this->assertCount(1,json_decode((string)$this->_response->getBody(),true)['results']);
         $this->get('/operacao/ordens?q='.urlencode("' OR 1=1 --"));$this->assertResponseOk();$this->assertSame([],json_decode((string)$this->_response->getBody(),true)['results']);
         Access::table('Entressafras')->updateAll(['status'=>'encerrada'],['id'=>$this->season]);$this->get('/operacao/ordens?q=0053');$this->assertResponseCode(409);
     }
@@ -59,9 +84,9 @@ class OperacaoSimplificadaTest extends TestCase
         $this->post('/apontamentos/change/'.$entry->id,['acao'=>'lancado','motivo'=>'Tentativa']);$this->assertResponseCode(403);
         $this->post('/fila-pcm/os/'.$this->activities[0],['selecionados'=>[$entry->id],'confirmar'=>'1','acao'=>'lancado']);$this->assertResponseCode(403);
     }
-    public function testComputerCannotForgeOtherSectorOrInactiveSeasonOnSave(): void
+    public function testComputerCanUseOtherSectorButNotInactiveSeasonOnSave(): void
     {
-        try{$this->entries->save($this->computer,['atividade_id'=>$this->activities[1],'funcionario_chave'=>'pessoa-1','inicio'=>'2026-10-01T07:00','fim'=>'2026-10-01T09:00','descricao'=>'Teste']);$this->fail();}catch(\Cake\Http\Exception\ForbiddenException){}
+        $id=$this->entries->save($this->computer,['atividade_id'=>$this->activities[1],'funcionario_chave'=>'pessoa-1','inicio'=>'2026-10-01T07:00','fim'=>'2026-10-01T09:00','descricao'=>'Teste']);$this->assertGreaterThan(0,$id);
         Access::table('Entressafras')->updateAll(['status'=>'encerrada'],['id'=>$this->season]);$this->expectException(\DomainException::class);
         $this->entries->save($this->computer,['atividade_id'=>$this->activities[0],'funcionario_chave'=>'pessoa-1','inicio'=>'2026-10-01T07:00','fim'=>'2026-10-01T09:00','descricao'=>'Teste']);
     }

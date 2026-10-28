@@ -66,9 +66,11 @@ final class TimeEntries
     }
     public function save(int $userId, array $input, ?int $id = null, bool $validateOnly = false): int
     {
+        if($id===null&&!$validateOnly&&isset($input['envio_chave']))return EnvioLote::run($userId,'apontamento',$input,function()use($userId,$input){unset($input['envio_chave']);return [$this->save($userId,$input)];})[0];
         $input=self::formInput($input);
         $user = Access::actor($userId);
         $table = Access::table('Apontamentos');
+        if($table->getConnection()->getDriver() instanceof \Cake\Database\Driver\Postgres)$table->getConnection()->enableSavePoints(true);
         try {
             return $table->getConnection()->transactional(function () use ($user, $table, $input, $id, $validateOnly): int {
                 if ($id !== null && $table->getConnection()->getDriver() instanceof \Cake\Database\Driver\Postgres) {
@@ -140,6 +142,10 @@ final class TimeEntries
                     $season = Access::table('Entressafras')->get($activity->entressafra_id);
                     $snapshot = ['funcionario' => $employee, 'os_numero' => $activity->os_numero, 'os_filial' => $activity->os_filial, 'os_chave' => $activity->os_chave, 'servico' => $activity->servico, 'bem' => $activity->bem, 'setor_id' => $sector->id, 'setor_nome' => $sector->nome,'area_executante_totvs'=>$activity->area_executante_totvs,'area_fisica_referencia'=>$notebook?->area_fisica, 'caderno_id' => $notebook?->id, 'caderno_nome' => ($notebook?->nome??'Sem caderno'), 'entressafra_id' => $season->id, 'entressafra_nome' => $season->nome];
                 }
+                if(!$existing&&!$validateOnly){
+                    if($table->getConnection()->getDriver() instanceof \Cake\Database\Driver\Postgres)$table->getConnection()->execute('SELECT id FROM entressafras WHERE id=? FOR SHARE',[(int)$activity->entressafra_id]);
+                    PeriodoContexto::writable((int)$activity->entressafra_id);
+                }
                 $conflicts=[]; foreach ($periods as [$from,$to]) { $conflicts=array_merge($conflicts,$this->conflicts($employee['chave'],$from,$to,$id)); }
                 if ($conflicts) { throw new ConflictException($conflicts); }
                 if ($validateOnly) { return 0; }
@@ -169,6 +175,7 @@ final class TimeEntries
     }
     public function saveBatch(int $userId, array $input): array
     {
+        if(isset($input['envio_chave']))return EnvioLote::run($userId,'apontamentos',$input,function()use($userId,$input){unset($input['envio_chave']);return $this->saveBatch($userId,$input);});
         $rows = $input['apontamentos'] ?? null;
         if (!is_array($rows) || !$rows || !array_is_list($rows)) { throw new \DomainException('Adicione pelo menos um apontamento.'); }
         if (isset($input['quantidade_linhas']) && (string)$input['quantidade_linhas'] !== (string)count($rows)) {
@@ -201,13 +208,14 @@ final class TimeEntries
         }
         if ($errors) { throw new BatchEntryException($errors); }
         return Access::table('Apontamentos')->getConnection()->transactional(function () use ($prepared, $userId): array {
+            uasort($prepared,static fn($a,$b)=>strcmp($a['funcionario_chave'],$b['funcionario_chave']));
             $ids = [];
             foreach ($prepared as $index => $row) {
-                try { $ids[] = $this->save($userId, $row); }
+                try { $ids[$index] = $this->save($userId, $row); }
                 catch (ConflictException $e) { throw new BatchEntryException([$index => $this->batchConflict($e)]); }
                 catch (\DomainException $e) { throw new BatchEntryException([$index => $e->getMessage()]); }
             }
-            return $ids;
+            ksort($ids);return array_values($ids);
         });
     }
     private function batchConflict(ConflictException $error): string

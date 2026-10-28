@@ -6,6 +6,7 @@ $lines=$this->request->getData('insumos');if(!is_array($lines)||!$lines)$lines=[
 <?= $this->Html->css('apontamentos-batch.css?v='.filemtime(WWW_ROOT.'css/apontamentos-batch.css')) ?>
 <section class="panel entry-sheet supplies-sheet">
 <?= $this->Form->create(null,['id'=>'insumos-form']) ?>
+<?= $this->Form->hidden('envio_chave',['value'=>$this->request->getData('envio_chave')??bin2hex(random_bytes(16))]) ?>
 <?= $this->Form->hidden('quantidade_linhas',['id'=>'supplies-count','value'=>count($lines)]) ?>
 <?= $this->element('order_autocomplete',['quickOrder'=>true]) ?>
 <div class="entry-head" aria-hidden="true"><span>Funcionário</span><span>Data</span><span>Material</span><span>Quantidade</span><span>Ações</span></div>

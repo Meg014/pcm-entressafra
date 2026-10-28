@@ -209,7 +209,7 @@ class CurvaReorganizacaoTest extends TestCase
         $this->assertSame(1,(new Curva())->report($this->season,'pendentes')['metrics']['total']);
         $weekly=array_column($r['points'],'simples','referencia');$this->assertSame(5.0,$weekly['2026-10-12']);$this->assertSame(60.0,$weekly['2026-10-19']);
         $this->assertSame($this->sectors[0],(int)Access::table('Atividades')->get($a)->setor_executante_id);
-        $this->get('/controle-pcm?entressafra_id='.$this->season.'&area_id='.$this->areas[0]);$this->assertResponseOk();$this->assertResponseContains('Moenda');$this->assertResponseContains('60,00%');$this->assertResponseNotContains('Classificação física das O.S.');
+        $this->get('/controle-pcm?entressafra_id='.$this->season.'&area_id='.$this->areas[0]);$this->assertResponseOk();$this->assertResponseContains('Moenda');$this->assertResponseContains('60%');$this->assertResponseNotContains('Classificação física das O.S.');
     }
     public function testUnclassifiedOrdersAreLaunchableAndOverridesHaveOnePrincipalArea(): void
     {

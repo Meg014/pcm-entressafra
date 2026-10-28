@@ -16,7 +16,7 @@ final class Access
     }
     public static function sectors($user): array
     {
-        if ($user->perfil !== 'RESPONSAVEL_SETOR') { return self::table('Setores')->find()->all()->extract('id')->toList(); }
+        if ($user->perfil !== 'RESPONSAVEL_SETOR' || self::operational($user)) { return self::table('Setores')->find()->all()->extract('id')->toList(); }
         return self::table('UsuariosSetores')->find()->where(['usuario_id' => $user->id])->all()->extract('setor_id')->toList();
     }
     public static function sector($user, int $id): void
@@ -48,6 +48,10 @@ final class Access
     public static function pcm($user): void
     {
         if (!in_array($user->perfil, ['ADMIN_PCM', 'PCM'], true)) { throw new ForbiddenException('Acesso exclusivo do PCM.'); }
+    }
+    public static function ownRecord($user,$record): void
+    {
+        if(self::operational($user)&&(int)$record->criado_por!==(int)$user->id)throw new ForbiddenException('Conta operacional: consulte somente os próprios registros.');
     }
     public static function admin($user): void
     {

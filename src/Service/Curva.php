@@ -49,19 +49,15 @@ final class Curva
         $rows=$this->position($where,$params,$reference);$metrics=$this->metrics($rows);
         $page=max(1,min($page,max(1,(int)ceil($metrics['total']/10))));
         $details=$this->position($where,$params,$reference,true,$page);
-        $versions=(new Evolucao())->versions($season,'pesos');$weights=[];$weight=null;
-        foreach($versions as $version)if($version['aprovado_em']){$weight=$version;$weights=json_decode($version['conteudo'],true,512,JSON_THROW_ON_ERROR);break;}
+        $weight=null;
         $points=[];$dates=Calendarios::weeks($s->data_inicio->format('Y-m-d'),$s->data_fim->format('Y-m-d'));
         $dates=array_values(array_filter($dates,fn($d)=>$d<=$reference));
         if($reference>=$s->data_inicio->format('Y-m-d'))$dates[]=$reference;
         foreach(array_unique($dates) as $date) {
             $values=$this->position($where,$params,$date);$m=$this->metrics($values);
-            $points[]=['referencia'=>$date,'simples'=>$m['simples'],'ponderado'=>Evolucao::weighted(array_column($values,'percentual','id'),$weights)];
+            $points[]=['referencia'=>$date,'simples'=>$m['simples'],'ponderado'=>null];
         }
-        $official=Evolucao::weighted(array_column($rows,'percentual','id'),$weights);
-        $calendar=new Calendarios();$planned=[];
-        foreach($rows as $row){$value=$calendar->planned($row,$reference);if($value===null){$planned=[];break;}$planned[$row['id']]=$value;}
-        $programado=$planned?Evolucao::weighted($planned,$weights):null;
+        $official=null;$programado=null;
         $hasHistory=(bool)array_filter($rows,fn($r)=>$r['ultima_atualizacao']!==null);
         if($demo) {
             $first=new \DateTimeImmutable($s->data_inicio->format('Y-m-d'));$second=$first->modify('+7 days');

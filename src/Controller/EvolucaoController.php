@@ -145,13 +145,63 @@ class EvolucaoController extends OperacaoController
         $area=$this->request->getQuery('area_id','');$search=$this->request->getQuery('q','');
         if(!is_string($area)||!is_string($search))throw new \Cake\Http\Exception\BadRequestException('Filtro inválido.');
         $demo=$this->request->getQuery('demonstracao')==='eletrica';
+        $simulation=$this->request->getQuery('simular')==='eletrica';
+        if($simulation)Access::admin($this->currentUser);
+        $weeklyService=new \App\Service\CurvaSemanal();$areas=$weeklyService->areas($season);
+        $electricalArea=\App\Service\CurvaSimulacao::electricalArea($areas);
+        if($simulation){
+            if($demo||$electricalArea===null||($area!==''&&$area!==(string)$electricalArea))throw new \Cake\Http\Exception\BadRequestException('Simulação disponível somente para o setor ELÉTRICA da entressafra selecionada.');
+            $area=(string)$electricalArea;
+            $this->setResponse($this->response->withHeader('Cache-Control','no-store, private'));
+        }
         try{$report=(new \App\Service\Curva())->report($season,$area,$search,(int)$this->request->getQuery('pagina',1),$demo);}
         catch(\DomainException $e){throw new \Cake\Http\Exception\BadRequestException($e->getMessage());}
-        $areas=$this->fetchTable('AreasFabrica')->find('list')->orderBy(['nome'=>'ASC'])->all()->toArray();
         $seasonRow=$this->fetchTable('Entressafras')->get($season);
         $areaName=$demo?'Elétrica · equipe executante (DEMONSTRAÇÃO)':($area==='pendentes'?'Pendências de classificação':($area!==''?($areas[(int)$area]??'Área'):'Consolidado da entressafra'));
         $this->set(compact('report','area','search','demo','areas','areaName','seasonRow'));
+        $weekly=!$demo&&ctype_digit($area)&&isset($weeklyService->areas($season)[(int)$area])?$weeklyService->report($season,(int)$area):null;
+        if($weekly!==null) {
+            $displayDate=(new \DateTimeImmutable('now',new \DateTimeZone('America/Sao_Paulo')))->format('Y-m-d');
+            $weekly['display_days']=\App\Service\ProgramacaoAutomatica::position($weeklyService->automaticCalendar($season,(int)$area),$displayDate)+['data'=>$displayDate];
+            if($simulation){
+                try{$weekly=\App\Service\CurvaSimulacao::report($weekly);}
+                catch(\DomainException $e){throw new \Cake\Http\Exception\BadRequestException($e->getMessage());}
+            }
+        }
+        $this->set(compact('weekly','simulation','electricalArea'));
         $this->viewBuilder()->setTemplate('acompanhamento');
+    }
+    public function programacaoSemanal()
+    {
+        Access::admin($this->currentUser);$service=new \App\Service\CurvaSemanal();
+        $season=(int)\App\Service\PeriodoContexto::id();if(!$season)throw new \Cake\Http\Exception\BadRequestException('Selecione uma entressafra.');
+        $areas=$service->areas($season);$selected=$this->request->getQuery('area_id',(string)(array_key_first($areas)??0));
+        if(!is_string($selected)||!ctype_digit($selected)||!isset($areas[(int)$selected]))throw new \Cake\Http\Exception\BadRequestException('Selecione um setor cadastrado na entressafra.');
+        $area=(int)$selected;
+        if($this->request->is('post')) {
+            try {
+                $data=$this->request->getData();$action=$data['acao']??'';
+                $reason=$data['motivo']??'';if(!is_string($reason))throw new \DomainException('Justificativa inválida.');
+                if($action==='dias') {
+                    if(!is_array($data['dias']??null)||!is_string($data['excluidos']??''))throw new \DomainException('Dias operacionais inválidos.');
+                    $excluded=preg_split('/[\s,;]+/',trim($data['excluidos']??''),-1,PREG_SPLIT_NO_EMPTY);
+                    $service->saveOperatingDays((int)$this->currentUser->id,$season,$area,$data['dias'],$excluded,$reason);
+                } elseif(in_array($action,['apurar','corrigir'],true)) {
+                    if(!is_string($data['referencia']??null))throw new \DomainException('Referência inválida.');
+                    if($action==='corrigir'&&(!is_scalar($data['base']??null)||!ctype_digit((string)$data['base'])))throw new \DomainException('Versão inválida.');
+                    $service->close((int)$this->currentUser->id,$season,$area,$data['referencia'],$action==='corrigir'?$reason:null,$action==='corrigir'?(int)$data['base']:null);
+                } else { throw new \DomainException('Operação inválida.'); }
+                $this->Flash->success('Versão registrada. Históricos anteriores preservados.');return $this->redirect(['action'=>'programacaoSemanal','?'=>['area_id'=>$area]]);
+            }catch(\DomainException $error){$this->Flash->error($error->getMessage());}
+        }
+        $weekly=$service->report($season,$area);$calendar=$service->calendar($season,$area);
+        $selectedVersion=null;$requestedVersion=$this->request->getQuery('versao_id');
+        if($requestedVersion!==null) {
+            if(!is_string($requestedVersion)||!ctype_digit($requestedVersion))throw new \Cake\Http\Exception\BadRequestException('Versão inválida.');
+            foreach(array_merge($weekly['plans'],$weekly['versions']) as $version)if((string)$version['id']===$requestedVersion)$selectedVersion=$version;
+            if(!$selectedVersion)throw new \Cake\Http\Exception\BadRequestException('Versão fora do setor selecionado.');
+        }
+        $this->set(compact('weekly','areas','area','season','calendar','selectedVersion'));
     }
     public function analise(): void
     {

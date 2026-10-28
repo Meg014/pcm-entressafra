@@ -64,6 +64,7 @@ class ApontamentosController extends OperacaoController
     {
         $query = Access::activityScope($this->fetchTable('Apontamentos')->find()->contain(['Atividades' => ['Entressafras','SetorExecutante','Cadernos' => ['Setores', 'Entressafras']]])->innerJoinWith('Atividades'),$this->currentUser);
         $this->filters($query, 'Apontamentos');
+        if(Access::operational($this->currentUser))$query->where(['Apontamentos.criado_por'=>$this->currentUser->id]);
         $employee = $this->request->getQuery('funcionario', '');
         if (!is_string($employee) || mb_strlen($employee) > 150) { throw new \Cake\Http\Exception\BadRequestException('Funcionário inválido.'); }
         if ($employee !== '') { $query->where(['OR' => ['funcionario_nome LIKE' => '%' . $employee . '%', 'funcionario_matricula LIKE' => '%' . $employee . '%']]); }
@@ -117,7 +118,7 @@ class ApontamentosController extends OperacaoController
     }
     public function view($id): void
     {
-        $row = $this->fetchTable('Apontamentos')->get($id); $activity = $this->activity((int)$row->atividade_id);
+        $row = $this->fetchTable('Apontamentos')->get($id); Access::ownRecord($this->currentUser,$row); $activity = $this->activity((int)$row->atividade_id);
         $audits = $this->fetchTable('Auditorias')->find()->where(['apontamento_id' => $row->id])->orderBy(['id' => 'ASC'])->all();
         $this->set(compact('row', 'activity', 'audits'));
     }

@@ -1,0 +1,43 @@
+window.addEventListener('load',()=>setTimeout(()=>{
+ const results=[];const check=(value,message)=>{if(!value)throw Error(message);results.push(message);};
+ try {
+  const root=document.getElementById('curva-semanal');check(!!root,'Curva semanal presente');
+  const svg=root.querySelector('svg');check(svg.getAttribute('role')==='img','Gráfico acessível');
+  check(root.querySelectorAll('[data-series]').length===3,'Três linhas de evolução');
+  check(root.querySelector('[data-series=programado]').getAttribute('stroke')==='#173e70','Programado azul');
+  check(root.querySelector('[data-series=realizado]').getAttribute('stroke')==='#148356','Realizado verde');
+  check(root.querySelector('[data-series=tendencia]').getAttribute('stroke-dasharray')==='8 5','Tendência tracejada');
+  check(root.querySelector('[data-series=tendencia]').getAttribute('d')==='','Sem tendência inventada com uma apuração');
+  const scheduled=root.querySelector('[data-series=programado]');
+  check(Math.abs(scheduled.getPointAtLength(0).y-330)<.01&&Math.abs(scheduled.getPointAtLength(scheduled.getTotalLength()).y-60)<.01,'Curva preservada de 0% a 100%');
+  check(root.querySelector('.curve-metrics').textContent.includes('70%')&&root.querySelector('.curve-metrics').textContent.includes('63%'),'Indicadores arredondados somente na exibição');
+  check(root.textContent.includes('-7,00 p.p.')&&root.textContent.includes('Atrasado'),'Diferença preservada');
+  const bar=root.querySelector('.curve-day-bar'),total=Number(bar.dataset.total),elapsed=Number(bar.dataset.elapsed),remaining=Number(bar.dataset.remaining);
+  check(total===20&&elapsed+remaining===total,'Total igual à soma dos dias');
+  const today=new Intl.DateTimeFormat('en-CA',{timeZone:'America/Sao_Paulo',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
+  const currentDays=Math.max(0,Math.min(20,Math.floor((Date.parse(today+'T12:00:00Z')-Date.parse('2026-10-14T12:00:00Z'))/86400000)+1));
+  check(elapsed===currentDays,'Dias corridos acompanham a data atual');
+  check(Math.abs(parseFloat(bar.children[0].style.width)-elapsed/total*100)<.001&&Math.abs(parseFloat(bar.children[1].style.width)-remaining/total*100)<.001,'Larguras proporcionais ao calendário');
+  check((!elapsed||bar.children[0].textContent.trim()===String(elapsed))&&(!remaining||bar.children[1].textContent.trim()===String(remaining)),'Números dentro da barra');
+  check(svg.querySelectorAll('[data-week]').length===3,'Todas as semanas identificadas');
+  check(svg.textContent.includes('14/10/26')&&svg.textContent.includes('02/11/26'),'Intervalos parciais completos no eixo');
+  check(svg.dataset.labelsReady==='1','Posicionamento de rótulos executado');
+  const labels=[...svg.querySelectorAll('[data-point-label]')].filter(el=>getComputedStyle(el).visibility!=='hidden');
+  check(labels.length===4&&labels.some(el=>el.textContent==='63%'),'Percentuais inteiros visíveis nos pontos');
+  check(!/\d+[,.]\d+%/.test(root.textContent),'Sem casas decimais nos percentuais exibidos');
+  check([...svg.querySelectorAll('[data-point-series]')].every(el=>Math.abs(Number(el.getAttribute('cy'))-(330-Number(el.dataset.value)*2.7))<.000001),'Posições do gráfico usam valores internos sem arredondamento');
+  check([...svg.querySelectorAll('[data-point-series=realizado]')].some(el=>Number(el.dataset.value)===62.5),'Realizado interno preserva casas decimais');
+  const boxes=labels.map(el=>el.getBBox());
+  check(boxes.every((a,i)=>boxes.every((b,j)=>i===j||a.x>=b.x+b.width||a.x+a.width<=b.x||a.y>=b.y+b.height||a.y+a.height<=b.y)),'Rótulos sem sobreposição');
+  check([...svg.querySelectorAll('.curve-point')].every(el=>el.querySelector('title').textContent.includes('%')),'Pontos com detalhes ao passar o mouse');
+  const history=root.querySelector('.curve-history');
+  check(history.querySelectorAll('tbody tr').length===3&&history.querySelectorAll('th').length===5,'Histórico com cinco colunas');
+  check(history.querySelector('tbody tr:last-child').children[3].textContent.trim()==='Aguardando apuração','Futuro sem realizado inventado');
+  check(!root.querySelector('.curve-method').open&&root.querySelector('.curve-method').textContent.includes('média móvel'),'Metodologia recolhida');
+  check(document.querySelectorAll('[data-os-row]').length===4,'Relação de O.S. preservada');
+  check(root.querySelector('.curve-chart-scroll').scrollWidth>root.querySelector('.curve-chart-scroll').clientWidth||window.innerWidth>=1200,'Rolagem do gráfico em telas menores');
+  check(document.documentElement.scrollWidth<=window.innerWidth,'Página sem overflow horizontal');
+  check(window.errors.length===0,'Sem erros JavaScript');
+ }catch(error){results.push('FAIL: '+error.message);}
+ const output=document.createElement('pre');output.id='browser-test-results';output.textContent=JSON.stringify({width:window.innerWidth,results,errors:window.errors});document.body.append(output);
+},250));

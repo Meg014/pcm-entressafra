@@ -24,6 +24,7 @@ class InsumosController extends OperacaoController
     public function index(): void
     {
         $query=Access::activityScope($this->fetchTable('Insumos')->find()->contain(['Atividades'=>['Entressafras','SetorExecutante','Cadernos']])->innerJoinWith('Atividades'),$this->currentUser);
+        if(Access::operational($this->currentUser))$query->where(['Insumos.criado_por'=>$this->currentUser->id]);
         $this->set('rows',$this->paginate($query->orderBy(['Insumos.id'=>'DESC']),['limit'=>50,'maxLimit'=>50]));
     }
 }
