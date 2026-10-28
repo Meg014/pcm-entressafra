@@ -12,7 +12,7 @@ $labels=['elegivel'=>'Disponível para vínculo','mesmo'=>'Já vinculada a este 
 </section>
 <?php if($recent): ?><details class="panel mt-3"><summary>Retomar prévias deste caderno</summary><?php foreach($recent as $saved): ?><p><?= $this->Html->link('Retomar prévia de '.$saved['quantidade'].' O.S. — '.$saved['estado'].' — '.$saved['created'],['action'=>'lista',$book->id,'?'=>['token'=>$saved['token']]],['class'=>'btn btn-outline-primary']) ?></p><?php endforeach; ?></details><?php endif; ?>
 <?php else:
-$job=$data['job'];$counts=$data['counts'];$ready=$job->estado==='pronto';
+$job=$data['job'];$counts=$data['counts'];$ready=$job->estado==='pronto';$canChoose=in_array($job->estado,['pronto','concluido'],true);
 $expected=in_array($job->estado,['preparando','pronto'],true)?$data['filters']['unicas']:($counts['selecionadas']??0);
 $done=$job->estado==='preparando'?(int)$job->cursor_os:($ready?$data['total']:($counts['processadas']??0));
 ?>
@@ -20,10 +20,11 @@ $done=$job->estado==='preparando'?(int)$job->cursor_os:($ready?$data['total']:($
 <h2><?= $ready?'Prévia completa':($job->estado==='preparando'?'Conferindo O.S.':'Resultado da vinculação') ?></h2>
 <p><strong><?= h($done) ?>/<?= h($expected) ?></strong></p><progress value="<?= h($done) ?>" max="<?= h(max(1,$expected)) ?>" style="width:100%"></progress>
 <p>Informadas: <?= h($data['filters']['informadas']) ?> · Únicas: <?= h($data['filters']['unicas']) ?> · Repetidas ignoradas: <?= h($data['filters']['repetidas']) ?></p>
+<p>Selecionadas para transferência: <strong data-transfer-total><?= h($counts['transferencias_selecionadas']??0) ?></strong></p>
 <p>Encontradas: <?= h($data['total']-($counts['nao_encontrada']??0)) ?> · Disponíveis: <?= h($counts['elegivel']??0) ?> · Já neste caderno: <?= h($counts['mesmo']??0) ?> · Em outro caderno: <?= h($counts['outro']??0) ?> · Não encontradas: <?= h($counts['nao_encontrada']??0) ?> · Inelegíveis: <?= h($counts['inelegivel']??0) ?> · Identificação pendente: <?= h($counts['ambigua']??0) ?><?php if($job->estado==='concluido'): ?> · Vinculadas: <?= h($counts['sucesso']??0) ?> · Erros: <?= h($counts['erro']??0) ?><?php endif; ?></p>
-<?php if($ready): ?>
+<?php if($canChoose): ?>
 <?= $this->Form->create(null) ?><?= $this->Form->hidden('acao',['value'=>'confirmar']) ?>
-<p>A confirmação vinculará todas as <?= h($counts['elegivel']??0) ?> O.S. disponíveis, incluindo as outras páginas. O.S. já vinculadas não serão duplicadas ou transferidas.</p>
+<p>A confirmação vinculará todas as <?= h($counts['elegivel']??0) ?> O.S. disponíveis, incluindo as outras páginas. Transferências são confirmadas separadamente na seção abaixo.</p>
 <?= $this->Form->button('Confirmar vínculos',['class'=>'btn btn-primary','disabled'=>empty($counts['elegivel'])]) ?><?= $this->Form->end() ?>
 <?php endif; ?>
 <?php if(in_array($job->estado,['preparando','processando'],true)): ?>
@@ -32,8 +33,9 @@ $done=$job->estado==='preparando'?(int)$job->cursor_os:($ready?$data['total']:($
 <?= $this->Form->button('Continuar processamento',['class'=>'btn btn-outline-primary']) ?><?= $this->Form->end() ?>
 <?php endif; ?>
 </section>
-<?php $pending=array_filter($data['rows']->toList(),fn($item)=>in_array($item->estado,['outro','nao_encontrada','inelegivel','ambigua','erro'],true)); ?>
-<?php if($pending): ?><section class="panel mb-3"><h2>Pendências nesta página</h2><?php foreach($pending as $item): ?><p><strong><?= h($item->numero) ?></strong> — <?= h($labels[$item->estado]) ?>. <?= h(\App\Service\OsApresentacao::texto((string)$item->motivo)) ?></p><?php endforeach; ?><?php if(!empty($counts['outro'])): ?><p>Corrija o destino em uma operação administrativa separada, preservando o histórico.</p><?= $this->Html->link('Revisar transferências',['action'=>'transferencia',$book->id,'?'=>['token'=>$token]],['class'=>'btn btn-outline-secondary']) ?><?php endif; ?></section><?php endif; ?>
+<?php if(($counts['outro']??0)>0&&$canChoose): ?><?= $this->element('transferencias_lista',compact('book','data','token')) ?><?php endif; ?>
+<?php $pending=array_filter($data['rows']->toList(),fn($item)=>in_array($item->estado,['nao_encontrada','inelegivel','ambigua','erro'],true)); ?>
+<?php if($pending): ?><section class="panel mb-3"><h2>Pendências nesta página</h2><?php foreach($pending as $item): ?><p><strong><?= h($item->numero) ?></strong> — <?= h($labels[$item->estado]) ?>. <?= h(\App\Service\OsApresentacao::texto((string)$item->motivo)) ?></p><?php endforeach; ?></section><?php endif; ?>
 <details class="panel" <?= $data['page']>1?'open':'' ?>><summary>Consultar O.S. encontradas e resultados — 10 por página</summary><div class="table-responsive"><table class="table"><thead><tr><th>O.S.</th><th>Descrição</th><th>Setor / equipe executante</th><th>Resultado</th></tr></thead><tbody>
 <?php foreach($data['rows'] as $item): $snapshot=json_decode($item->snapshot,true);$os=$snapshot['os'];$classification=$snapshot['classificacao'];$local=$item->atividade_id?\App\Service\Access::table('Atividades')->get($item->atividade_id):null;$presentation=$local?\App\Service\OsApresentacao::activity($local,$os??[]):\App\Service\OsApresentacao::source($os??[],$classification['equipe']??null); ?>
 <tr><td><?= h($item->numero) ?></td><td><?= h($presentation['descricao']) ?></td><td><?= h($presentation['rotulo_setor']) ?>: <?= h($presentation['setor_apresentacao']) ?></td><td><?= h($labels[$item->estado]) ?><?php if($item->caderno_atual): ?><small class="d-block">Caderno atual: <?= h($classification['caderno_nome']??$item->caderno_atual) ?></small><?php endif; ?></td></tr>

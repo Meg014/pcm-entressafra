@@ -75,12 +75,52 @@ final class ListLinks
             $offset+=count($numbers);$job->cursor_os=(string)$offset;$job->estado=$offset>=count($filters['numbers'])?'pronto':'preparando';Access::table('VinculosLotes')->saveOrFail($job);
         });
     }
-    public function summary(int $userId,string $token,int $page=1): array
+    public function summary(int $userId,string $token,int $page=1,int $transferPage=1): array
     {
         $job=$this->job($userId,$token);$t=Access::table('VinculosItens');$q=$t->find()->where(['lote_id'=>$job->id]);$total=$q->count();$pages=max(1,(int)ceil($total/10));$page=max(1,min($page,$pages));
         $counts=[];foreach((clone $q)->select(['estado','selecionado'])->all() as $item){$counts[$item->estado]=($counts[$item->estado]??0)+1;if($item->selecionado){$counts['selecionadas']=($counts['selecionadas']??0)+1;if(in_array($item->estado,['sucesso','erro','mesmo'],true))$counts['processadas']=($counts['processadas']??0)+1;}}
         $rows=(clone $q)->orderBy(['id'=>'ASC'])->limit(10)->offset(($page-1)*10)->all();
-        return compact('job','rows','counts','total','page','pages')+['filters'=>json_decode($job->filtros,true)];
+        $transfers=(clone $q)->where(['estado'=>'outro']);$transferPages=max(1,(int)ceil(($counts['outro']??0)/50));$transferPage=max(1,min($transferPage,$transferPages));
+        $transferRows=(clone $transfers)->orderBy(['id'=>'ASC'])->limit(50)->offset(($transferPage-1)*50)->all();
+        $counts['transferencias_selecionadas']=(clone $transfers)->where(['selecionado'=>true])->count();
+        $selectionSignature=$this->transferSignature($job);
+        return compact('job','rows','counts','total','page','pages','transferRows','transferPage','transferPages','selectionSignature')+['filters'=>json_decode($job->filtros,true)];
+    }
+    private function transferSignature($job): string
+    {
+        $book=Access::table('Cadernos')->get($job->caderno_id);$items=Access::table('VinculosItens')->find()->select(['id','caderno_atual','atividade_id'])->where(['lote_id'=>$job->id,'estado'=>'outro','selecionado'=>true])->orderBy(['id'=>'ASC'])->disableHydration()->all()->toArray();
+        return hash_hmac('sha256',json_encode([$job->token,$book->id,$book->entressafra_id,$book->area_curva_id,$book->ativo,$items],JSON_THROW_ON_ERROR),\Cake\Utility\Security::getSalt());
+    }
+    public function transferSelection(int $userId,string $token,array $selected,array $visible=[],bool $all=false,bool $keep=false): void
+    {
+        Access::table('VinculosLotes')->getConnection()->transactional(function()use($userId,$token,$selected,$visible,$all,$keep){
+            $job=$this->locked($userId,$token);if(!in_array($job->estado,['pronto','concluido'],true))throw new \DomainException('Aguarde a prévia ou o processamento terminar.');
+            $t=Access::table('VinculosItens');$where=['lote_id'=>$job->id,'estado'=>'outro'];
+            foreach([...$selected,...$visible] as $id)if(!is_scalar($id)||!ctype_digit((string)$id)||(int)$id<1)throw new \DomainException('Seleção de transferência inválida.');
+            $selected=array_values(array_unique(array_map('intval',$selected)));$visible=array_values(array_unique(array_map('intval',$visible)));
+            if(!$all&&!$keep){if(array_diff($selected,$visible)||$t->find()->where($where+['id IN'=>$visible?:[-1]])->count()!==count($visible))throw new \DomainException('Seleção fora desta prévia de transferência.');}
+            if($job->estado==='concluido'){$t->updateAll(['selecionado'=>false],['lote_id'=>$job->id]);$job->estado='pronto';Access::table('VinculosLotes')->saveOrFail($job);}
+            if($all||$keep)$t->updateAll(['selecionado'=>$all&&!$keep],$where);
+            else{$t->updateAll(['selecionado'=>false],$where+['id IN'=>$visible?:[-1]]);if($selected)$t->updateAll(['selecionado'=>true],$where+['id IN'=>$selected]);}
+        });
+    }
+    public function confirmTransfers(int $userId,string $token,int $quantity,string $signature,bool $confirmed,string $reason): void
+    {
+        $db=Access::table('VinculosLotes')->getConnection();$db->transactional(function()use($db,$userId,$token,$quantity,$signature,$confirmed,$reason){
+            $job=$this->locked($userId,$token);if(!$confirmed)throw new \DomainException('Confirme explicitamente a transferência das O.S. selecionadas.');
+            if($db->getDriver() instanceof \Cake\Database\Driver\Postgres)$db->execute('SELECT id FROM cadernos WHERE id=? FOR SHARE',[$job->caderno_id]);
+            if($job->estado!=='pronto'||!hash_equals($this->transferSignature($job),$signature))throw new \DomainException('A seleção ou o destino mudou. Confira novamente a prévia antes de confirmar.');
+            $items=Access::table('VinculosItens')->find()->where(['lote_id'=>$job->id,'estado'=>'outro','selecionado'=>true])->orderBy(['atividade_id'=>'ASC'])->all();
+            if(!$quantity||$items->count()!==$quantity)throw new \DomainException('A quantidade selecionada mudou. Confira antes de confirmar.');
+            foreach($items as $item){if($db->getDriver() instanceof \Cake\Database\Driver\Postgres)$db->execute('SELECT id FROM atividades WHERE id=? FOR UPDATE',[$item->atividade_id]);
+                $a=Access::table('Atividades')->get($item->atividade_id);$origin=$a->caderno_id?$db->execute('SELECT id,entressafra_id FROM cadernos WHERE id=?',[$a->caderno_id])->fetch('assoc'):null;
+                $destination=Access::table('Cadernos')->get($job->caderno_id);
+                if(!$origin||(int)$a->caderno_id!==(int)$item->caderno_atual||(int)$a->entressafra_id!==(int)$destination->entressafra_id||(int)$origin['entressafra_id']!==(int)$destination->entressafra_id)throw new \DomainException('O.S. '.$item->numero.': vínculo de origem mudou ou pertence a outra entressafra. Prepare uma nova prévia.');}
+            $f=json_decode($job->filtros,true);$f['destino_confirmado']=['id'=>(int)$destination->id,'nome'=>$destination->nome,'area_curva_id'=>$destination->area_curva_id,'entressafra_id'=>(int)$destination->entressafra_id];$job->filtros=json_encode($f,JSON_THROW_ON_ERROR);Access::table('VinculosLotes')->saveOrFail($job);
+            // This action authorizes only the transfer section, never new unlinked orders.
+            Access::table('VinculosItens')->updateAll(['selecionado'=>false],['lote_id'=>$job->id,'estado !='=>'outro']);
+            $this->start($userId,$token,$quantity,$reason);
+        });
     }
     public function select(int $userId,string $token,array $ids,bool $all=false,bool $transfers=false): void
     {
@@ -108,7 +148,11 @@ final class ListLinks
     {
         Access::table('VinculosLotes')->getConnection()->transactional(function()use($userId,$token){
             $job=$this->locked($userId,$token);
-            if(in_array($job->estado,['processando','concluido'],true))return;
+            if($job->estado==='processando')return;
+            if($job->estado==='concluido'){
+                if(!Access::table('VinculosItens')->exists(['lote_id'=>$job->id,'estado'=>'elegivel']))return;
+                $job->estado='pronto';Access::table('VinculosLotes')->saveOrFail($job);
+            }
             if($job->estado!=='pronto')throw new \DomainException('Aguarde a conferência completa das O.S.');
             $items=Access::table('VinculosItens');
             $quantity=$items->find()->where(['lote_id'=>$job->id,'estado'=>'elegivel'])->count();
@@ -138,11 +182,14 @@ final class ListLinks
                 $job=$this->locked($userId,$token);$t=Access::table('VinculosItens');$item=$t->get($item->id);if(!in_array($item->estado,['elegivel','outro'],true)||!$item->selecionado)return;
                 $ctx=$this->context($userId,(int)$job->caderno_id);$season=(int)$ctx['season']->id;
                 if($db->getDriver() instanceof \Cake\Database\Driver\Postgres)$db->execute('SELECT id FROM entressafras WHERE id=? FOR UPDATE',[$season]);
+                if($db->getDriver() instanceof \Cake\Database\Driver\Postgres){$destination=$db->execute('SELECT id,entressafra_id FROM cadernos WHERE id=? FOR SHARE',[$job->caderno_id])->fetch('assoc');if(!$destination||(int)$destination['entressafra_id']!==$season)throw new \DomainException('O destino mudou de entressafra. Prepare nova prévia.');$ctx=$this->context($userId,(int)$job->caderno_id);}
                 $row=$source[$item->numero]??null;if(!$row)throw new \DomainException('O.S. não encontrada na revalidação.');
                 if($db->getDriver() instanceof \Cake\Database\Driver\Postgres)$db->execute('SELECT pg_advisory_xact_lock(hashtext(?))',['pcm_equipe:'.$row['filial'].':'.$row['codigo_area']]);
+                if($item->atividade_id&&$db->getDriver() instanceof \Cake\Database\Driver\Postgres)$db->execute('SELECT id FROM atividades WHERE id=? FOR UPDATE',[$item->atividade_id]);
                 $now=$this->classify($row,(int)$job->caderno_id,$season);$preview=json_decode($item->snapshot,true)['classificacao'];
                 $original=json_decode($item->snapshot,true)['os'];
                 $f=json_decode($job->filtros,true);
+                if(isset($f['destino_confirmado'])&&$f['destino_confirmado']!==['id'=>(int)$ctx['notebook']->id,'nome'=>$ctx['notebook']->nome,'area_curva_id'=>$ctx['notebook']->area_curva_id,'entressafra_id'=>$season])throw new \DomainException('O caderno de destino mudou depois da confirmação. Prepare nova prévia.');
                 if($now['estado']==='mesmo'){$item->estado='mesmo';$item->motivo='Já vinculada por outro processamento; sem duplicar.';$t->saveOrFail($item);return;}
                 if(!in_array($now['estado'],['elegivel','outro'],true)||$now['caderno_atual']!==$preview['caderno_atual']||$now['atividade_id']!==$preview['atividade_id']||($now['setor_id']!==$preview['setor_id']&&empty($preview['criar_equipe']))||$row['codigo_area']!==$original['codigo_area']||$row['filial']!==$original['filial'])throw new \DomainException('Identidade, situação, equipe ou vínculo mudou. Prepare nova prévia.');
                 if($now['estado']==='outro'&&trim($f['justificativa']??'')==='')throw new \DomainException('Transferência não autorizada.');
@@ -152,13 +199,15 @@ final class ListLinks
                     Access::audit($ctx['user'],'equipe_identificada_totvs',null,null,$team->toArray(),'Código original STJ010.TJ_CODAREA, confirmado na consulta da O.S.');
                 }
                 $activities=Access::table('Atividades');$a=$now['atividade_id']?$activities->get($now['atividade_id']):null;$before=$a?->toArray();
+                if($a?->caderno_id){$originSeason=$db->execute('SELECT entressafra_id FROM cadernos WHERE id=?',[$a->caderno_id])->fetch('assoc');if(!$originSeason||(int)$originSeason['entressafra_id']!==$season)throw new \DomainException('Caderno de origem de outra entressafra. Histórico preservado.');}
                 if(!$a){$stamp=gmdate('Y-m-d H:i:s');$a=Access::entity($activities,['entressafra_id'=>$season,'setor_executante_id'=>$now['setor_id'],'area_executante_totvs'=>$row['codigo_area'],'identificacao_setor'=>'area_totvs','os_chave'=>$row['chave'],'os_numero'=>$row['numero'],'os_filial'=>'01','servico'=>$row['servico'],'bem'=>$row['bem'],'situacao_totvs'=>$row['situacao'],'disponivel_totvs'=>true,'snapshot_totvs'=>json_encode($row,JSON_THROW_ON_ERROR),'criado_por'=>$userId,'created'=>$stamp,'modified'=>$stamp]);}
                 if($now['associar_equipe']) {
                     $links=Access::table('CadernosSetores');$link=$links->saveOrFail(Access::entity($links,['caderno_id'=>$job->caderno_id,'setor_id'=>$now['setor_id']]));
                     Access::audit($ctx['user'],'equipe_caderno_lista',null,null,$link->toArray(),'Associação administrativa exibida na prévia e confirmada junto ao vínculo. Permissões por O.S. permanecem na equipe TOTVS.');
                 }
                 $a->caderno_id=$job->caderno_id;$activities->saveOrFail($a);
-                Access::audit($ctx['user'],$now['estado']==='outro'?'transferencia_caderno_lista':'vinculo_caderno_lista',null,$before,$a->toArray(),$f['justificativa']?:'Lista conferida pelo PCM; equipe executante preservada.');
+                $origin=$before&&$before['caderno_id']?Access::table('Cadernos')->get($before['caderno_id']):null;
+                Access::audit($ctx['user'],$now['estado']==='outro'?'transferencia_caderno_lista':'vinculo_caderno_lista',null,$before,$a->toArray()+['atividade_id'=>(int)$a->id,'caderno_origem'=>['id'=>$origin?->id,'nome'=>$origin?->nome],'caderno_destino'=>['id'=>$ctx['notebook']->id,'nome'=>$ctx['notebook']->nome]],$f['justificativa']?:'Lista conferida pelo PCM; equipe executante preservada.');
                 $item->atividade_id=$a->id;$item->estado='sucesso';$item->motivo=null;$t->saveOrFail($item);
             });}catch(\DomainException $e){$t=Access::table('VinculosItens');$failed=$t->get($item->id);$failed->estado='erro';$failed->motivo=$e->getMessage();$t->saveOrFail($failed);}
         }

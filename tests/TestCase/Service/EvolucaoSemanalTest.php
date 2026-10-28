@@ -54,6 +54,22 @@ class EvolucaoSemanalTest extends TestCase
         $p=$this->sheet->page(Access::actor($this->one),$this->season,0,'005300',1);$this->assertNull($p['rows'][0]['cells']['2026-10-26']['valor']);$this->assertSame(20.,$p['rows'][0]['cells']['2026-10-26']['acumulado']);
         $this->assertSame(2,Access::table('EvolucaoRegistros')->find()->count());$this->assertSame(0.,$this->sheet->page(Access::actor($this->one),$this->season,0,'005301',1)['rows'][0]['cells']['2026-10-19']['valor']);
     }
+    public function testLiveWeeklyCurveCarriesAndRefreshesOnlyUntilNextAccumulatedEntry(): void
+    {
+        $this->save([$this->cell(0,'2026-10-19',10),$this->cell(0,'2026-11-02',50)]);
+        $curve=new CurvaSemanal();$when=new \DateTimeImmutable('2026-11-03T15:00:00Z');
+        $before=$curve->report($this->season,$this->areas[0],$when);
+        $this->assertSame([5.,5.,25.],array_column(array_slice($before['points'],0,3),'realizado'));
+        $this->assertNull($before['points'][3]['realizado']);
+        $this->save([$this->cell(0,'2026-10-19',20)]);
+        $after=$curve->report($this->season,$this->areas[0],$when);
+        $this->assertSame([10.,10.,25.],array_column(array_slice($after['points'],0,3),'realizado'));
+        $this->assertSame(array_column($before['points'],'programado'),array_column($after['points'],'programado'));
+        $this->assertSame(3,Access::table('EvolucaoRegistros')->find()->count());
+        $this->assertSame(0,Access::table('EvolucaoVersoes')->find()->count());
+        $this->assertSame(50.,\App\Service\OrderProgress::status($this->ids[0])['percentual_atual']);
+        $this->assertEqualsWithDelta(12.5,(new Curva())->report($this->season)['metrics']['simples'],1e-9);
+    }
     public function testRevisionsAppendAndStaleCellDoesNotOverwriteOtherUser(): void
     {
         $a=$this->cell(0,'2026-10-19',10);$this->save([$a]);
@@ -91,7 +107,7 @@ class EvolucaoSemanalTest extends TestCase
         $this->save([$this->cell(0,'2026-10-19',20)],new EvolucaoSemanal(new \DateTimeImmutable('2026-10-19T12:00:00Z')));
         $curva=new CurvaSemanal();$when=new \DateTimeImmutable('2026-10-28T15:00:00Z');$version=$curva->close($this->admin,$this->season,$this->areas[0],'2026-10-20',null,null,$when);$original=Access::table('EvolucaoVersoes')->get($version)->conteudo;
         $this->assertEqualsWithDelta(10.,json_decode($original,true)['realizado'],1e-9);
-        $this->save([$this->cell(0,'2026-10-19',30)]);$report=$curva->report($this->season,$this->areas[0],$when);$this->assertTrue($report['points'][0]['revisao_pendente']);$this->assertEqualsWithDelta(10.,$report['points'][0]['realizado'],1e-9);
+        $this->save([$this->cell(0,'2026-10-19',30)]);$report=$curva->report($this->season,$this->areas[0],$when);$this->assertTrue($report['points'][0]['revisao_pendente']);$this->assertEqualsWithDelta(15.,$report['points'][0]['realizado'],1e-9);$this->assertEqualsWithDelta(10.,$report['points'][0]['realizado_publicado'],1e-9);
         $new=$curva->close($this->admin,$this->season,$this->areas[0],'2026-10-20','Revisão solicitada após correção',$version,$when);$this->assertNotSame($version,$new);$this->assertSame($original,Access::table('EvolucaoVersoes')->get($version)->conteudo);
         $report=$curva->report($this->season,$this->areas[0],$when);$this->assertFalse($report['points'][0]['revisao_pendente']);$this->assertSame(2,$report['points'][0]['revisao_fechamento']);$this->assertEqualsWithDelta(15.,$report['points'][0]['realizado'],1e-9);
     }

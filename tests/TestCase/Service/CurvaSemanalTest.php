@@ -87,7 +87,8 @@ class CurvaSemanalTest extends TestCase
         $service->close($this->admin,$this->season,$this->area,'2026-10-27');
         $service->close($this->admin,$this->season,$this->area,'2026-11-03',now:new \DateTimeImmutable('2026-11-03T12:00:00-03:00'));
         $report=$service->report($this->season,$this->area,new \DateTimeImmutable('2026-10-27T12:00:00-03:00'));
-        $this->assertSame(37.5,$report['latest']['evolucao_semanal']);$this->assertNull($report['points'][2]['realizado']);
+        // Revision 2 is effective in the first week, so both live positions are now 100%.
+        $this->assertSame(0.0,$report['latest']['evolucao_semanal']);$this->assertSame(100.0,$report['points'][0]['realizado']);$this->assertSame(62.5,$report['points'][0]['realizado_publicado']);$this->assertNull($report['points'][2]['realizado']);
         $this->assertNull($report['points'][2]['tendencia']);$this->assertSame(100.,$report['points'][2]['programado']);
     }
     public function testTuesdayWeeksPartialStartAndFinalWeek(): void

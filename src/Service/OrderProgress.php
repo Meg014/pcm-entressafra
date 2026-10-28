@@ -8,8 +8,8 @@ final class OrderProgress
     public static function status(int $activityId): array
     {
         $activity=Access::table('Atividades')->get($activityId);
-        try { [$reference]=(new OperacaoRapida())->reference((int)$activity->entressafra_id); }
-        catch (\DomainException) { return ['percentual_atual'=>0.0]; }
+        $season=Access::table('Entressafras')->get((int)$activity->entressafra_id);
+        $reference=min((new \DateTimeImmutable('now',new \DateTimeZone('America/Sao_Paulo')))->format('Y-m-d'),$season->data_fim->format('Y-m-d'));
         return ['percentual_atual'=>(new Evolucao())->state($activityId,$reference)['percentual']];
     }
 }

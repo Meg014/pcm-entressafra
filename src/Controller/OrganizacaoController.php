@@ -63,6 +63,16 @@ class OrganizacaoController extends OperacaoController
                     if((int)$job->caderno_id!==(int)$book->id)throw new \DomainException('Prévia de outro caderno.');
                     if(!$transferMode&&in_array($action,['selecionar','todas','limpar'],true))throw new \DomainException('A vinculação simples confirma todas as O.S. elegíveis. Transferências são administrativas.');
                     switch($action){
+                        case 'selecionar_transferencias':
+                        case 'revisar_transferencias':
+                            $s->transferSelection((int)$this->currentUser->id,$token,(array)($d['transferencias']??[]),(array)($d['visiveis']??[]));
+                            $selection=$s->summary((int)$this->currentUser->id,$token);
+                            if($action==='revisar_transferencias'&&empty($selection['counts']['transferencias_selecionadas']))throw new \DomainException('Selecione ao menos uma O.S. para revisar a transferência.');
+                            if($this->request->getHeaderLine('X-Requested-With')==='XMLHttpRequest')return $this->response->withType('application/json')->withHeader('Cache-Control','no-store')->withStringBody(json_encode(['ok'=>true]));
+                            break;
+                        case 'todas_transferencias':$s->transferSelection((int)$this->currentUser->id,$token,[],[],true);break;
+                        case 'manter_origem':$s->transferSelection((int)$this->currentUser->id,$token,[],[],false,true);break;
+                        case 'confirmar_transferencias':$s->confirmTransfers((int)$this->currentUser->id,$token,(int)($d['quantidade_transferencias']??0),(string)($d['assinatura']??''),($d['confirmar_transferencia']??'')==='1',(string)($d['justificativa']??''));break;
                         case 'preparar':$s->prepare((int)$this->currentUser->id,$token);break;
                         case 'selecionar':$s->select((int)$this->currentUser->id,$token,(array)($d['ids']??[]));if(($d['transferir']??'')==='1')$s->select((int)$this->currentUser->id,$token,(array)($d['ids']??[]),false,true);break;
                         case 'todas':$s->select((int)$this->currentUser->id,$token,[],true);break;
@@ -72,17 +82,17 @@ class OrganizacaoController extends OperacaoController
                         default:throw new \DomainException('Ação inválida.');
                     }
                 }
-                return $this->redirect(['action'=>$transferMode?'transferencia':'lista',$book->id,'?'=>['token'=>$token,'pagina'=>(int)$this->request->getQuery('pagina',1)]]);
+                return $this->redirect(['action'=>$transferMode?'transferencia':'lista',$book->id,'?'=>['token'=>$token,'pagina'=>(int)$this->request->getQuery('pagina',1),'pagina_transferencias'=>(int)$this->request->getQuery('pagina_transferencias',1),'revisar'=>$action==='revisar_transferencias'?'1':null]]);
             }
         }catch(\DomainException $e){$this->Flash->error($e->getMessage());$paused=true;}
         $data=null;
-        try{$data=$token!==''?$s->summary((int)$this->currentUser->id,$token,(int)$this->request->getQuery('pagina',1)):null;}
+        try{$data=$token!==''?$s->summary((int)$this->currentUser->id,$token,(int)$this->request->getQuery('pagina',1),(int)$this->request->getQuery('pagina_transferencias',1)):null;}
         catch(\DomainException $e){$this->Flash->error($e->getMessage());$paused=true;}
         if($data&&(int)$data['job']->caderno_id!==(int)$book->id)throw new \Cake\Http\Exception\BadRequestException('Prévia de outro caderno.');
         $listTarget=\App\Service\NavegacaoCadernos::target($this->request);
         if(!$transferMode&&$data&&$data['job']->estado==='concluido'){
             $counts=$data['counts'];$pending=0;
-            foreach(['outro','nao_encontrada','inelegivel','ambigua','erro'] as $state)$pending+=$counts[$state]??0;
+            foreach(['elegivel','outro','nao_encontrada','inelegivel','ambigua','erro'] as $state)$pending+=$counts[$state]??0;
             if(!$pending){
                 $this->Flash->success(($counts['sucesso']??0).' O.S. vinculada(s) ao caderno '. $book->nome.'.');
                 return $this->redirect($listTarget);

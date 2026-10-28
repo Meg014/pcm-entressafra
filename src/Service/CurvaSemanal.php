@@ -147,7 +147,9 @@ final class CurvaSemanal
         $plans=$this->versions($season,$area,'curva_meta'); // Legacy versions remain inspectable, never used for the automatic line.
         $versions=$this->versions($season,$area,'curva_sem');$closed=[];
         foreach($versions as $version)$closed[$version['referencia_semanal']]??=$version;
-        $live=new Evolucao();if($closed)$live->loadHistory($season);
+        $live=new Evolucao();$live->loadHistory($season);
+        [$where,$params]=(new Curva())->scope($season,(string)$area);
+        $currentRoster=$this->db()->execute('SELECT a.id,a.created FROM atividades a LEFT JOIN cadernos c ON c.id=a.caderno_id WHERE '.$where,$params)->fetchAll('assoc');
         $asOf=($now??new \DateTimeImmutable('now'))->setTimezone(new \DateTimeZone('UTC'))->format('Y-m-d H:i:s');
         $calendar=$this->automaticCalendar($season,$area);$points=[];$latest=null;$due=[];$realized=[];
         foreach($weeks as $week){
@@ -155,8 +157,20 @@ final class CurvaSemanal
             $position=ProgramacaoAutomatica::position($calendar,$week['fim']);
             $point=$week+['programado'=>$position['programado'],'programado_apurado'=>$snapshot['programado']??null,'realizado'=>$snapshot['realizado']??null,'quantidade'=>$snapshot['quantidade']??null,'versao_id'=>$snapshot?$closed[$week['referencia']]['id']:null,'tendencia'=>null,'apurado_em'=>$snapshot['apurado_em']??null,'origem_programado_apurado'=>$snapshot?(isset($snapshot['programacao_automatica'])?'automatico':'legado'):null];
             $point['revisao_pendente']=false;$point['revisao_fechamento']=$snapshot?(int)$closed[$week['referencia']]['revisao_semanal']:0;
-            if($snapshot)foreach($snapshot['ordens'] as $order){$record=null;foreach($live->history((int)$order['id']) as $r)if($r['referencia']<=$week['fim']&&$r['created']<=$asOf)$record=$r;
-                if((int)($record['id']??0)!==(int)($order['registro_id']??0)){$point['revisao_pendente']=true;break;}}
+            // A live reading of accumulated entries; published snapshots remain immutable.
+            $point['realizado_publicado']=$snapshot['realizado']??null;
+            if($week['referencia']<=$today){
+                $cutoff=self::date($week['fim'])->setTime(23,59,59)->setTimezone(new \DateTimeZone('UTC'))->format('Y-m-d H:i:s');
+                $roster=$snapshot['ordens']??array_values(array_filter($currentRoster,fn($order)=>$order['created']<=$cutoff));
+                $sum=0.;foreach($roster as $order){
+                    $record=null;foreach($live->history((int)$order['id']) as $r)if($r['referencia']<=$week['fim']&&$r['created']<=$asOf)$record=$r;
+                    $sum+=(float)($record['percentual']??0);
+                    if($snapshot&&(int)($record['id']??0)!==(int)($order['registro_id']??0))$point['revisao_pendente']=true;
+                }
+                // Legacy snapshots without their composition cannot be safely recalculated.
+                if(!$snapshot||$roster){$point['quantidade']=count($roster);$point['realizado']=$roster?$sum/count($roster):null;}
+                if(!$snapshot)$point['programado_apurado']=$position['programado'];
+            }
             $point['diferenca']=$point['programado_apurado']!==null&&$point['realizado']!==null?$point['realizado']-$point['programado_apurado']:null;
             $previous=self::date($week['referencia'])->modify('-7 days')->format('Y-m-d');
             $point['evolucao_semanal']=$point['realizado']!==null&&isset($realized[$previous])?$point['realizado']-$realized[$previous]:null;

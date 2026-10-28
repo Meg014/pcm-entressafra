@@ -13,6 +13,7 @@ class CurvaReorganizacaoTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
+        Access::table('Insumos')->deleteAll([]);
         foreach(['EvolucaoPesos','EvolucaoMetas','EvolucaoRegistros','EvolucaoLotes','EvolucaoVersoes','CalendariosOperacionais','EvolucaoSemanas','VinculosItens','VinculosLotes','Auditorias','Apontamentos','Atividades','UsuariosSetores','Usuarios','Cadernos','Setores','AreasFabrica','Entressafras'] as $alias)Access::table($alias)->deleteAll([]);
         $stamp=gmdate('Y-m-d H:i:s');$t=Access::table('Usuarios');$this->admin=(int)$t->saveOrFail(Access::entity($t,['nome'=>'Admin curva','login'=>'curva-admin','senha_hash'=>password_hash('teste123',PASSWORD_DEFAULT),'perfil'=>'ADMIN_PCM','ativo'=>true,'created'=>$stamp,'modified'=>$stamp]))->id;
         $t=Access::table('Entressafras');$this->season=(int)$t->saveOrFail($t->newEntity(['nome'=>'Curva teste','data_inicio'=>'2026-10-05','data_fim'=>'2027-04-10','status'=>'ativa']))->id;
@@ -78,9 +79,9 @@ class CurvaReorganizacaoTest extends TestCase
         $url='/cadernos/'.$this->books[0].'/vincular-lista?token='.$token;
         $this->get($url);$this->assertResponseOk();
         $dom=new \DOMDocument();@$dom->loadHTML((string)$this->_response->getBody());$xp=new \DOMXPath($dom);
-        $this->assertSame(0,$xp->query('//input[@type="checkbox"]|//input[@name="quantidade"]|//input[@name="justificativa"]|//select')->length);
+        $this->assertSame(1,$xp->query('//input[@type="checkbox"]')->length);$this->assertSame(0,$xp->query('//input[@name="quantidade"]|//input[@name="justificativa"]|//select')->length);
         $this->assertSame(1,$xp->query('//form[.//input[@name="acao" and @value="confirmar"]]')->length);
-        $this->assertResponseContains('Confirmar vínculos');$this->assertResponseContains('/transferir-os');
+        $this->assertResponseContains('Confirmar vínculos');$this->assertResponseContains('O.S. vinculadas a outros cadernos');
         $this->assertSame(2,Access::table('Atividades')->find()->count());
         // A stale administrative transfer selection cannot enter initial linking.
         $conflict=Access::table('VinculosItens')->find()->where(['numero'=>'000002'])->firstOrFail();
@@ -190,6 +191,58 @@ class CurvaReorganizacaoTest extends TestCase
         $a=Access::table('Atividades')->get($id);$this->assertSame($this->books[0],(int)$a->caderno_id);$this->assertSame($this->sectors[0],(int)$a->setor_executante_id);
         $this->assertSame($before,(new Evolucao())->history($id));$this->assertSame(1,Access::table('Atividades')->find()->count());
         $this->assertSame(1,Access::table('Auditorias')->find()->where(['acao'=>'transferencia_caderno_lista'])->count());
+    }
+    public function testIntegratedTransferSelectionConfirmationAndMixedImportPreserveRecords(): void
+    {
+        foreach([1,2,3] as $number)$this->sourceRows[]=$this->row($number);
+        $id=$this->local(1,$this->books[1]);$other=$this->local(2,$this->books[1]);$this->progress($id,70);
+        $this->classify($this->books[0],$this->areas[0]);$this->classify($this->books[1],$this->areas[1]);
+        $this->assertSame(2,(new Curva())->report($this->season,(string)$this->areas[1])['metrics']['total']);
+        $entry=(new TimeEntries(new \App\Test\Support\FakeTotvs('MECANI')))->save($this->admin,['atividade_id'=>$id,'funcionario_chave'=>'teste-transferencia','inicio'=>'2026-10-19T07:00','fim'=>'2026-10-19T08:00','descricao'=>'Histórico preservado']);
+        $supplies=Access::table('Insumos');$supply=$supplies->saveOrFail(Access::entity($supplies,['atividade_id'=>$id,'funcionario_chave'=>'teste-transferencia','funcionario_nome'=>'Teste','funcionario_matricula'=>'0001','data'=>'2026-10-19','material'=>'Material histórico','quantidade'=>2,'snapshot'=>'{}','criado_por'=>$this->admin,'created'=>gmdate('Y-m-d H:i:s')]));
+        $history=(new Evolucao())->history($id);$hours=Access::table('Apontamentos')->get($entry)->toArray();$materials=$supplies->get($supply->id)->toArray();
+        $service=new ListLinks($this->source());$token=$this->preview($service,'000001 000002 000003');$view=$service->summary($this->admin,$token);$items=$view['transferRows']->toList();$visible=array_map(fn($i)=>(int)$i->id,$items);
+        $service->transferSelection($this->admin,$token,[$visible[0]],$visible);$view=$service->summary($this->admin,$token);$this->assertSame(1,$view['counts']['transferencias_selecionadas']);$this->assertSame($this->books[1],(int)Access::table('Atividades')->get($id)->caderno_id);
+        try{$service->confirmTransfers($this->admin,$token,1,$view['selectionSignature'],false,'Reorganização conferida');$this->fail();}catch(\DomainException){}
+        $service->confirmTransfers($this->admin,$token,1,$view['selectionSignature'],true,'Reorganização conferida');$this->finish($service,$token);
+        $this->assertSame($this->books[0],(int)Access::table('Atividades')->get($id)->caderno_id);$this->assertSame($this->books[1],(int)Access::table('Atividades')->get($other)->caderno_id);
+        $this->assertSame($history,(new Evolucao())->history($id));$this->assertEquals($hours,Access::table('Apontamentos')->get($entry)->toArray());$this->assertEquals($materials,$supplies->get($supply->id)->toArray());
+        $this->assertSame(2,Access::table('Atividades')->find()->count());$service->confirmEligible($this->admin,$token);$this->finish($service,$token);$this->assertSame(3,Access::table('Atividades')->find()->count());
+        $this->assertSame(2,Access::table('Atividades')->find()->where(['caderno_id'=>$this->books[0]])->count());$this->assertSame(1,Access::table('Atividades')->find()->where(['caderno_id'=>$this->books[1]])->count());
+        $this->assertSame(1,(new Curva())->report($this->season,(string)$this->areas[1])['metrics']['total']);$destination=(new Curva())->report($this->season,(string)$this->areas[0]);$this->assertSame(2,$destination['metrics']['total']);$this->assertSame(35.,$destination['metrics']['simples']);
+        $audit=Access::table('Auditorias')->find()->where(['acao'=>'transferencia_caderno_lista'])->firstOrFail();$after=json_decode($audit->depois,true);$this->assertSame($this->books[1],(int)$after['caderno_origem']['id']);$this->assertSame($this->books[0],(int)$after['caderno_destino']['id']);$this->assertSame($this->admin,(int)$audit->usuario_id);
+    }
+    public function testSelectAllSeventySevenTransfersAndKeepOriginalAcrossPages(): void
+    {
+        for($i=1;$i<=77;$i++){$this->sourceRows[]=$this->row($i);$this->local($i,$this->books[1]);}
+        $s=new ListLinks($this->source());$token=$this->preview($s,implode(' ',array_column($this->sourceRows,'numero')));$view=$s->summary($this->admin,$token,1,2);$this->assertSame(2,$view['transferPages']);$this->assertCount(27,$view['transferRows']);
+        $s->transferSelection($this->admin,$token,[],[],true);$view=$s->summary($this->admin,$token);$this->assertSame(77,$view['counts']['transferencias_selecionadas']);$this->assertSame(77,Access::table('Atividades')->find()->where(['caderno_id'=>$this->books[1]])->count());
+        $s->transferSelection($this->admin,$token,[],[],false,true);$this->assertSame(0,$s->summary($this->admin,$token)['counts']['transferencias_selecionadas']);
+        $s->transferSelection($this->admin,$token,[],[],true);$view=$s->summary($this->admin,$token);$s->confirmTransfers($this->admin,$token,77,$view['selectionSignature'],true,'Reorganização dos 77 vínculos conferida');$this->finish($s,$token);
+        $this->assertSame(77,Access::table('Atividades')->find()->where(['caderno_id'=>$this->books[0]])->count());$this->assertSame(77,Access::table('Auditorias')->find()->where(['acao'=>'transferencia_caderno_lista'])->count());
+    }
+    public function testChangedSelectionOrOriginRejectsTransferConfirmation(): void
+    {
+        foreach([1,2] as $n){$this->sourceRows[]=$this->row($n);$this->local($n,$this->books[1]);}$s=new ListLinks($this->source());$token=$this->preview($s,'000001 000002');$s->transferSelection($this->admin,$token,[],[],true);$old=$s->summary($this->admin,$token);$items=$old['transferRows']->toList();$visible=array_map(fn($i)=>(int)$i->id,$items);
+        $s->transferSelection($this->admin,$token,[$visible[0]],$visible);
+        try{$s->confirmTransfers($this->admin,$token,2,$old['selectionSignature'],true,'Conferido');$this->fail();}catch(\DomainException $e){$this->assertStringContainsString('seleção',$e->getMessage());}
+        $view=$s->summary($this->admin,$token);Access::table('Atividades')->updateAll(['caderno_id'=>null],['id'=>$items[0]->atividade_id]);
+        try{$s->confirmTransfers($this->admin,$token,1,$view['selectionSignature'],true,'Conferido');$this->fail();}catch(\DomainException $e){$this->assertStringContainsString('origem mudou',$e->getMessage());}
+        $this->assertSame(0,Access::table('Auditorias')->find()->where(['acao'=>'transferencia_caderno_lista'])->count());
+    }
+    public function testTransferPreservesIndividualCurveClassification(): void
+    {
+        $this->sourceRows[]=$this->row(1);$id=$this->local(1,$this->books[1]);Access::table('Atividades')->updateAll(['area_curva_id'=>$this->areas[1]],['id'=>$id]);
+        $s=new ListLinks($this->source());$token=$this->preview($s,'000001');$s->transferSelection($this->admin,$token,[],[],true);$view=$s->summary($this->admin,$token);$s->confirmTransfers($this->admin,$token,1,$view['selectionSignature'],true,'Troca de caderno sem reclassificação individual');$this->finish($s,$token);
+        $a=Access::table('Atividades')->get($id);$this->assertSame($this->books[0],(int)$a->caderno_id);$this->assertSame($this->areas[1],(int)$a->area_curva_id);
+    }
+    public function testMainPreviewShowsTransfersAndOpensConfirmationWithoutMovingOrders(): void
+    {
+        $this->sourceRows[]=$this->row(1);$id=$this->local(1,$this->books[1]);$s=new ListLinks($this->source());$token=$this->preview($s,'000001');$item=$s->summary($this->admin,$token)['transferRows']->first();$url='/cadernos/'.$this->books[0].'/vincular-lista?token='.$token;
+        $this->get($url);$this->assertResponseOk();$this->assertResponseContains('O.S. vinculadas a outros cadernos');$this->assertResponseContains('Selecionar todas');$this->assertResponseContains('Manter no caderno original');$this->enableCsrfToken();
+        $this->post($url,['acao'=>'revisar_transferencias','visiveis'=>[$item->id],'transferencias'=>[$item->id]]);$this->assertRedirect();$this->get($url.'&revisar=1');$this->assertResponseOk();$this->assertResponseContains('id="transferencias-confirmacao"');
+        $this->assertSame($this->books[1],(int)Access::table('Atividades')->get($id)->caderno_id);
+        if(getenv('TRANSFERENCIAS_PREVIEW'))file_put_contents(TMP.'transferencias-lista-preview.html',(string)$this->_response->getBody());
     }
     public function testChangedSourceOrNotebookLinkIsNotSilentlyTransferred(): void
     {
