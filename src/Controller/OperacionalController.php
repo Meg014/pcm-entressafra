@@ -19,7 +19,7 @@ class OperacionalController extends OperacaoController
     }
     public function porcentagem()
     {
-        $service=new \App\Service\PorcentagensLote();$season=(int)\App\Service\PeriodoContexto::id();
+        $service=new \App\Service\EvolucaoSemanal();$season=(int)\App\Service\PeriodoContexto::id();
         $area=(int)$this->request->getQuery('area_id',0);$search=$this->request->getQuery('os','');$pending=[];
         $key=(string)($this->request->getData('chave')??bin2hex(random_bytes(16)));$ajax=$this->request->getHeaderLine('X-Requested-With')==='XMLHttpRequest';
         try{
@@ -32,7 +32,7 @@ class OperacionalController extends OperacaoController
                 try{$pending=json_decode($json,true,512,JSON_THROW_ON_ERROR);}catch(\JsonException){throw new \DomainException('Alterações inválidas.');}
                 if(!is_array($pending))throw new \DomainException('Alterações inválidas.');
                 $result=$service->save((int)$this->currentUser->id,$season,$area,$pending,$key);
-                $this->Flash->success($result['quantidade'].' O.S. atualizada(s).');
+                $this->Flash->success($result['quantidade'].' percentuais registrados com sucesso.');
                 if($ajax)return $this->response->withType('application/json')->withHeader('Cache-Control','no-store')->withStringBody(json_encode(['ok'=>true]+$result));
                 return $this->redirect($this->request->getRequestTarget());
             }
@@ -41,7 +41,7 @@ class OperacionalController extends OperacaoController
             $this->Flash->error($e->getMessage());
         }
         try{$batch=$service->page($this->currentUser,$season,$area,is_string($search)?$search:'',(int)$this->request->getQuery('pagina',1));}
-        catch(\DomainException $e){$this->Flash->error($e->getMessage());$batch=['areas'=>$service->areas($this->currentUser,$season),'rows'=>[],'total'=>0,'pages'=>1,'page'=>1,'reference'=>null];}
+        catch(\DomainException $e){$this->Flash->error($e->getMessage());$batch=['areas'=>$service->areas($this->currentUser,$season),'rows'=>[],'total'=>0,'pages'=>1,'page'=>1,'reference'=>null,'weeks'=>$service->weeks($season),'today'=>(new \DateTimeImmutable('now',new \DateTimeZone('America/Sao_Paulo')))->format('Y-m-d')];}
         $this->set(compact('batch','season','area','search','key','pending'));
     }
 }

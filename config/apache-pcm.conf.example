@@ -1,0 +1,34 @@
+# Standalone example for this workspace. Does not change XAMPP's running service.
+# Local listener for validation; configure the company IP/hostname before network use.
+ServerRoot "C:/xampp/apache"
+ServerName localhost
+Listen 127.0.0.1:8767
+PidFile "C:/PCM/Sistemas/PCM_ControleEntressafra/tmp/pcm-apache.pid"
+ErrorLog "C:/PCM/Sistemas/PCM_ControleEntressafra/logs/pcm-apache-error.log"
+LogLevel warn
+ThreadsPerChild 32
+MaxConnectionsPerChild 0
+LoadModule authz_core_module modules/mod_authz_core.so
+LoadModule dir_module modules/mod_dir.so
+LoadModule mime_module modules/mod_mime.so
+TypesConfig conf/mime.types
+LoadFile "C:/xampp/php/php8ts.dll"
+LoadFile "C:/xampp/php/libpq.dll"
+LoadFile "C:/xampp/php/libsqlite3.dll"
+LoadModule php_module "C:/xampp/php/php8apache2_4.dll"
+PHPIniDir "C:/xampp/php"
+<FilesMatch "\.php$">
+    SetHandler application/x-httpd-php
+</FilesMatch>
+DocumentRoot "C:/PCM/Sistemas/PCM_ControleEntressafra/webroot"
+DirectoryIndex index.php
+<Directory />
+    AllowOverride None
+    Require all denied
+</Directory>
+<Directory "C:/PCM/Sistemas/PCM_ControleEntressafra/webroot">
+    Require all granted
+    AllowOverride None
+    Options -Indexes
+    FallbackResource /index.php
+</Directory>

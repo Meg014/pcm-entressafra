@@ -37,6 +37,7 @@ final class CurvaSimulacao
             $point['origem_programado_apurado']=null;
             $point['quantidade']=null;
             $point['apurado_em']=null;
+            $point['revisao_pendente']=false;
             $previous=$value;
         }
         unset($point);

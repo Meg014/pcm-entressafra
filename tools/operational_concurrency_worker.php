@@ -8,8 +8,13 @@ try{
     if($data['hold'])$db->begin();
     echo "STARTED\n";flush();
     $gateway=new \App\Test\Support\OperationalTotvs();
-    $ids=$data['module']==='insumos'?(new \App\Service\Insumos($gateway))->saveBatch($data['user'],$data['input']):(new \App\Service\TimeEntries($gateway))->saveBatch($data['user'],$data['input']);
+    $ids=match($data['module']){
+        'insumos'=>(new \App\Service\Insumos($gateway))->saveBatch($data['user'],$data['input']),
+        'evolucao'=>(new \App\Service\EvolucaoSemanal(new DateTimeImmutable('2026-10-28T12:00:00Z')))->save($data['user'],$data['input']['season'],0,$data['input']['rows'],$data['input']['key']),
+        default=>(new \App\Service\TimeEntries($gateway))->saveBatch($data['user'],$data['input']),
+    };
     if($data['hold']){echo "READY\n";flush();if(trim((string)fgets(STDIN))!=='COMMIT')throw new RuntimeException('Liberação inválida.');$db->commit();}
     echo 'SAVED '.json_encode($ids).PHP_EOL;
 }catch(\App\Service\ConflictException|\App\Service\BatchEntryException $e){if($db->inTransaction())$db->rollback();echo 'CONFLICT '.$e->getMessage().PHP_EOL;}
+catch(\DomainException $e){if($db->inTransaction())$db->rollback();echo 'CONFLICT '.$e->getMessage().PHP_EOL;}
 catch(Throwable $e){if($db->inTransaction())$db->rollback();fwrite(STDERR,get_class($e).': '.$e->getMessage());exit(1);}

@@ -57,6 +57,10 @@ php bin/cake.php server -H 127.0.0.1 -p 8766
 ```
 
 Abra http://localhost:8766. A porta 8765 foi preservada para outro sistema PCM.
+
+Para uso simultâneo na empresa, utilize Apache/PHP com múltiplas threads; `php -S` no Windows atende uma requisição por vez. Veja [acesso e concorrência operacional](docs/ACESSO_E_CONCORRENCIA_OPERACIONAL.md), os testes isolados e o exemplo `config/apache-pcm.conf.example`.
+
+O lançamento de evolução agora usa uma [planilha semanal por O.S.](docs/EVOLUCAO_SEMANAL.md), com células acumuladas, revisões auditadas e proteção contra edições simultâneas. Reutiliza as tabelas existentes, sem nova migration.
 O servidor de desenvolvimento é interrompido com Ctrl+C.
 
 O banco já foi criado pelo administrador e as quatro migrations desta etapa

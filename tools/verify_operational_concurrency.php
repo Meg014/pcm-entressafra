@@ -26,10 +26,12 @@ try{
     operationalTestConnect($schema);$db=Access::table('Usuarios')->getConnection();$now=gmdate('Y-m-d H:i:s');$users=[];
     foreach(['computador1','computador2'] as $login){$table=Access::table('Usuarios');$users[]=(int)$table->saveOrFail(Access::entity($table,['login'=>$login,'nome'=>$login,'senha_hash'=>password_hash('fixture-Test123',PASSWORD_DEFAULT),'perfil'=>'RESPONSAVEL_SETOR','computador_operacional'=>true,'ativo'=>true,'created'=>$now,'modified'=>$now]))->id;}
     $table=Access::table('Entressafras');$season=$table->saveOrFail($table->newEntity(['nome'=>'CONCORRÊNCIA ISOLADA','data_inicio'=>'2026-01-01','data_fim'=>'2027-12-31','status'=>'ativa']));$orders=[];
+    $areaTable=Access::table('AreasFabrica');$presentation=$areaTable->saveOrFail(Access::entity($areaTable,['nome'=>'ELÉTRICA','entressafra_id'=>$season->id]));
     foreach(['ELÉTRICA'=>'005316','MECÂNICA'=>'005900','CALDEIRARIA'=>'005525','MOENDA'=>'005901'] as $name=>$number){
         $table=Access::table('Setores');$sector=$table->saveOrFail($table->newEntity(['nome'=>$name,'area_totvs'=>'T'.count($orders),'filial_totvs'=>'01','ativo'=>true]));
         $table=Access::table('Atividades');$a=$table->saveOrFail(Access::entity($table,['entressafra_id'=>$season->id,'setor_executante_id'=>$sector->id,'area_executante_totvs'=>$sector->area_totvs,'identificacao_setor'=>'area_totvs','os_chave'=>\App\Integration\Totvs\Orders::key('01',$number),'os_numero'=>$number,'os_filial'=>'01','servico'=>'ENTRESSAFRA TESTE','bem'=>'TESTE','situacao_totvs'=>'L','disponivel_totvs'=>true,'snapshot_totvs'=>'{}','criado_por'=>$users[0],'created'=>$now,'modified'=>$now]));$orders[]=(int)$a->id;
     }
+    Access::table('Atividades')->updateAll(['area_curva_id'=>$presentation->id],['id IN'=>$orders]);
     $hours=static fn($order,$person,$key)=>['atividade_id'=>(string)$order,'envio_chave'=>$key,'apontamentos'=>[['funcionario_chave'=>'teste-'.$person,'inicio'=>'2026-10-27T07:00','fim'=>'2026-10-27T09:00','descricao'=>'Fixture concorrente']]];
     $supplies=static fn($order,$person,$key)=>['atividade_id'=>(string)$order,'envio_chave'=>$key,'insumos'=>[['funcionario_chave'=>'teste-'.$person,'data'=>'27/10/2026','material'=>'Material de teste','quantidade'=>'2']]];
     $start=static function($user,$module,$input,$hold)use($schema,&$workers){
@@ -66,6 +68,14 @@ try{
     $a=$start($users[0],'insumos',$payload,true);$readUntil($a[1][1],'READY');$b=$start($users[0],'insumos',$payload,false);$readUntil($b[1][1],'STARTED');usleep(200000);fwrite($a[1][0],"COMMIT\n");fflush($a[1][0]);$outA=$finish($a);$outB=$finish($b);$workers=[];
     $check(trim($outA)===trim($outB),'Reenvio simultâneo devolve os mesmos IDs sem duplicar');
     $check(Access::table('Insumos')->find()->where(['funcionario_chave'=>'teste-reenvio'])->count()===1,'Um único insumo após dois envios');
+    // A common existing reference isolates per-order concurrency from first-time calendar insertion.
+    $db->insert('evolucao_semanas',['entressafra_id'=>$season->id,'referencia'=>'2026-10-27']);
+    $grade=static function($id,$value)use($users,$season){$sheet=new \App\Service\EvolucaoSemanal(new DateTimeImmutable('2026-10-28T12:00:00Z'));$a=Access::table('Atividades')->get($id);$p=$sheet->page(Access::actor($users[0]),(int)$season->id,0,$a->os_numero,1);$cell=$p['rows'][0]['cells']['2026-11-02'];return ['season'=>(int)$season->id,'key'=>bin2hex(random_bytes(16)),'rows'=>[['atividade_id'=>$id,'referencia'=>'2026-11-02','percentual'=>$value,'base'=>$cell['valor'],'base_registro'=>$cell['registro_id'],'revisao'=>$cell['revisao']]]];};
+    $a=$start($users[0],'evolucao',$grade($orders[0],25),true);$readUntil($a[1][1],'READY');$b=$start($users[1],'evolucao',$grade($orders[2],35),false);$outB=$finish($b);fwrite($a[1][0],"COMMIT\n");fflush($a[1][0]);$outA=$finish($a);$workers=[];
+    $check(str_contains($outA,'SAVED')&&str_contains($outB,'SAVED'),'Grade semanal: O.S. diferentes salvam sem aguardar commit alheio');
+    $payload=$grade($orders[0],45);$concurrent=$payload;$concurrent['key']=bin2hex(random_bytes(16));$concurrent['rows'][0]['percentual']=75;
+    $a=$start($users[0],'evolucao',$payload,true);$readUntil($a[1][1],'READY');$b=$start($users[1],'evolucao',$concurrent,false);$readUntil($b[1][1],'STARTED');usleep(200000);fwrite($a[1][0],"COMMIT\n");fflush($a[1][0]);$finish($a);$outB=$finish($b);$workers=[];
+    $check(str_contains($outB,'CONFLICT')&&str_contains($outB,'outra pessoa'),'Grade semanal: mesma O.S./semana detecta conflito sem sobrescrever');
     // One multithreaded Apache process, two independent HTTP cookie jars.
     putenv('PCM_OPERATIONAL_SCHEMA='.$schema);
     $sock=@stream_socket_client('tcp://127.0.0.1:18771',$errno,$errstr,.1);if($sock){fclose($sock);throw new RuntimeException('Porta de teste já ocupada.');}
@@ -86,6 +96,8 @@ try{
     $check(($jars[0]['pcm_operational_test']??null)!==($jars[1]['pcm_operational_test']??null),'Cookies de sessão independentes');
     foreach([[0,'005316'],[0,'005900'],[1,'005525'],[1,'005901']] as [$who,$number]){[$status,$body]=$request($who,'/operacao/ordens?q='.$number);$data=json_decode($body,true);if($status!==200||count($data['results']??[])!==1)file_put_contents(TMP.'operational-test-order-error.html',$body);$check($status===200&&count($data['results']??[])===1&&$data['results'][0]['numero']===$number,'Pesquisa HTTP sem vínculo por setor: computador'.($who+1).' / '.$number.' (HTTP '.$status.')');}
     foreach([0,1] as $who){[$status]=$request($who,'/apontamentos/funcionarios?q=teste');$check($status===200,'Autocomplete funcionários '.($who+1));[$status]=$request($who,'/usuarios');$check($status===403,'Administração bloqueada '.($who+1));}
+    [$status,$html]=$request(0,'/lancar-porcentagem?area_id='.$presentation->id);$check($status===200&&str_contains($html,'data-week-header')&&str_contains($html,'005316'),'Grade semanal HTTP acessível ao computador operacional');
+    if(getenv('EVOLUCAO_SEMANAL_PREVIEW'))file_put_contents(TMP.'evolucao-semanal-long-preview.html',$html);
     $parallel=static function(array $posts)use(&$jars,&$csrf){
         $multi=curl_multi_init();$handles=[];
         foreach($posts as $who=>[$path,$data]){$ch=curl_init('http://127.0.0.1:18771'.$path);curl_setopt_array($ch,[CURLOPT_RETURNTRANSFER=>true,CURLOPT_FOLLOWLOCATION=>false,CURLOPT_TIMEOUT=>20,CURLOPT_POST=>true,CURLOPT_POSTFIELDS=>http_build_query($data+['_csrfToken'=>$csrf[$who]]),CURLOPT_HTTPHEADER=>['Content-Type: application/x-www-form-urlencoded','Cookie: '.http_build_query($jars[$who],'','; ')]]);curl_multi_add_handle($multi,$ch);$handles[]=$ch;}

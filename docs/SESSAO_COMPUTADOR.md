@@ -2,6 +2,8 @@
 
 Aplicável somente às contas com perfil `RESPONSAVEL_SETOR` e opção **Computador operacional** habilitada no cadastro de usuários. Os demais usuários continuam sujeitos ao limite de 30 minutos sem atividade.
 
+**Atualização de 28/10/2026:** contas operacionais podem lançar em todos os setores sem vínculo usuário/setor, mantendo acesso apenas aos próprios apontamentos e insumos. Autenticação, cookies e limites administrativos permanecem preservados. Diagnóstico e testes estão em [Acesso e concorrência operacional](ACESSO_E_CONCORRENCIA_OPERACIONAL.md).
+
 O login operacional não expira por inatividade na aplicação. Um cookie HttpOnly, SameSite=Lax, restrito à pasta do sistema e Secure em HTTPS permite recuperar a autenticação caso o PHP elimine a sessão nativa. O banco armazena apenas o HMAC de um token aleatório de 256 bits, vinculado à senha atual. A credencial no servidor não tem prazo de expiração. O navegador limita a duração de cookies persistentes: são enviados por até 400 dias e renovados a cada acesso. Limpar os cookies ou ficar além do prazo suportado pelo navegador exige entrar novamente.
 
 O botão **Sair** remove o cookie, revoga a credencial e encerra a sessão. Alterar a senha, desativar a conta ou remover a opção de computador operacional invalida a recuperação. As permissões e os setores autorizados continuam sendo consultados a cada acesso. Não há credenciais de administrador persistentes nem gravações no TOTVS.

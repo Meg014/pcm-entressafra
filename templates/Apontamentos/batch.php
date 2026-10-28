@@ -6,7 +6,7 @@ if (!is_array($lines) || !$lines) { $lines=[[]]; }
 <?= $this->Html->css('apontamentos-batch.css?v='.filemtime(WWW_ROOT.'css/apontamentos-batch.css')) ?>
 <section class="panel entry-sheet">
 <?= $this->Form->create(null,['id'=>'batch-form']) ?>
-<?= $this->Form->hidden('envio_chave',['value'=>$this->request->getData('envio_chave')??bin2hex(random_bytes(16))]) ?>
+<?= $this->element('envio_chave') ?>
 <?= $this->Form->hidden('quantidade_linhas',['value'=>count($lines),'id'=>'entry-count']) ?>
 <?= $this->element('order_autocomplete',['quickOrder'=>true,'showOrderProgress'=>true]) ?>
 <div id="entry-order-status" class="mb-3 small text-secondary" role="status" data-order="<?= h(json_encode($selectedOrder,JSON_THROW_ON_ERROR)) ?>" <?= $selectedOrder?'':'hidden' ?>><?php if($selectedOrder): ?>Percentual atual da O.S.: <?= h($selectedOrder['percentual_atual']??0) ?>%<?php endif; ?></div>

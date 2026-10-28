@@ -1,5 +1,7 @@
 # Operação simplificada e fila PCM — 22/10/2026
 
+**Atualização de 28/10/2026:** computadores operacionais agora lançam em todos os setores sem vínculo usuário/setor e consultam os próprios apontamentos e insumos. Consulte [Acesso e concorrência operacional](ACESSO_E_CONCORRENCIA_OPERACIONAL.md) para regras atuais, diagnóstico, hospedagem e testes. As observações de implantação abaixo registram o estado histórico de 22/10.
+
 ## Telas
 
 Servidor local atual: `http://localhost:8766`.

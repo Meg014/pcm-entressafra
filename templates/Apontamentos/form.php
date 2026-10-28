@@ -3,7 +3,7 @@
 <?php if ($conflicts): ?><section class="alert alert-danger" role="alert"><h2>Horários conflitantes</h2><?php foreach ($conflicts as $conflict): ?><div class="border-top py-3"><strong><?= h($conflict['nome']) ?> · Matrícula <?= h($conflict['matricula']) ?></strong><p class="mb-1"><?= h($conflict['inicio']) ?> até <?= h($conflict['fim']) ?> (horário de Brasília)</p><p class="mb-1">O.S. <?= h($conflict['os']) ?> · <?= h(\App\Service\OsApresentacao::equipe($conflict['setor'])) ?> · <?= h($conflict['caderno']) ?></p><p class="mb-0"><?= h($conflict['descricao']) ?></p></div><?php endforeach; ?></section><?php endif; ?>
 <section class="panel form-panel"><?= $this->Form->create(null, ['id' => 'apontamento-form']) ?>
 <?php if (!$row): ?>
-<?= $this->Form->hidden('envio_chave',['value'=>$this->request->getData('envio_chave')??bin2hex(random_bytes(16))]) ?>
+<?= $this->element('envio_chave') ?>
 <?= $this->Form->hidden('continuar',['value'=>'1']) ?>
 <?= $this->Form->hidden('consultar_totvs',['value'=>'1']) ?>
 <?= $this->element('order_autocomplete',['quickOrder'=>true]) ?>

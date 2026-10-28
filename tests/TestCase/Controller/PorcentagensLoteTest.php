@@ -30,7 +30,7 @@ class PorcentagensLoteTest extends TestCase
         $this->assertSame(260,$one['total']);$this->assertCount(50,$one['rows']);$this->assertCount(10,$six['rows']);$this->assertSame('006000',$one['rows'][0]['numero']);$this->assertSame('006002',$one['rows'][2]['numero']);
         $this->assertSame(1,$s->page($admin,$this->season,$this->areas[0],'006025',1)['total']);$this->assertSame(1,$s->page($admin,$this->season,$this->areas[0],'006260',1)['total']);
         $this->get('/lancar-porcentagem?area_id='.$this->areas[0]);$this->assertResponseOk();$this->assertResponseContains('Atividade específica 006000');
-        $dom=new \DOMDocument();@$dom->loadHTML((string)$this->_response->getBody());$xp=new \DOMXPath($dom);$this->assertSame(4,$xp->query('//main//table/thead/tr/th')->length);$this->assertSame(50,$xp->query('//*[@data-percentage]')->length);
+        $dom=new \DOMDocument();@$dom->loadHTML((string)$this->_response->getBody());$xp=new \DOMXPath($dom);$weeks=count((new \App\Service\EvolucaoSemanal())->weeks($this->season));$this->assertSame(4+$weeks,$xp->query('//main//table/thead/tr/th')->length);$this->assertSame(50*$weeks,$xp->query('//*[@data-percentage]')->length);
         $this->assertSame(1,$xp->query('//button[@id="porcentagens-salvar"]')->length);
         foreach(['setor_id','caderno_id','referencia','observacoes','motivo'] as $field)$this->assertSame(0,$xp->query('//*[@name="'.$field.'"]')->length);
         $this->assertResponseNotContains('Sem atualização na semana');$this->assertResponseNotContains('Lançamento em lote');

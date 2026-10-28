@@ -147,11 +147,16 @@ final class CurvaSemanal
         $plans=$this->versions($season,$area,'curva_meta'); // Legacy versions remain inspectable, never used for the automatic line.
         $versions=$this->versions($season,$area,'curva_sem');$closed=[];
         foreach($versions as $version)$closed[$version['referencia_semanal']]??=$version;
+        $live=new Evolucao();if($closed)$live->loadHistory($season);
+        $asOf=($now??new \DateTimeImmutable('now'))->setTimezone(new \DateTimeZone('UTC'))->format('Y-m-d H:i:s');
         $calendar=$this->automaticCalendar($season,$area);$points=[];$latest=null;$due=[];$realized=[];
         foreach($weeks as $week){
             $snapshot=isset($closed[$week['referencia']])&&$week['referencia']<=$today?json_decode($closed[$week['referencia']]['conteudo'],true,512,JSON_THROW_ON_ERROR):null;
             $position=ProgramacaoAutomatica::position($calendar,$week['fim']);
             $point=$week+['programado'=>$position['programado'],'programado_apurado'=>$snapshot['programado']??null,'realizado'=>$snapshot['realizado']??null,'quantidade'=>$snapshot['quantidade']??null,'versao_id'=>$snapshot?$closed[$week['referencia']]['id']:null,'tendencia'=>null,'apurado_em'=>$snapshot['apurado_em']??null,'origem_programado_apurado'=>$snapshot?(isset($snapshot['programacao_automatica'])?'automatico':'legado'):null];
+            $point['revisao_pendente']=false;$point['revisao_fechamento']=$snapshot?(int)$closed[$week['referencia']]['revisao_semanal']:0;
+            if($snapshot)foreach($snapshot['ordens'] as $order){$record=null;foreach($live->history((int)$order['id']) as $r)if($r['referencia']<=$week['fim']&&$r['created']<=$asOf)$record=$r;
+                if((int)($record['id']??0)!==(int)($order['registro_id']??0)){$point['revisao_pendente']=true;break;}}
             $point['diferenca']=$point['programado_apurado']!==null&&$point['realizado']!==null?$point['realizado']-$point['programado_apurado']:null;
             $previous=self::date($week['referencia'])->modify('-7 days')->format('Y-m-d');
             $point['evolucao_semanal']=$point['realizado']!==null&&isset($realized[$previous])?$point['realizado']-$realized[$previous]:null;

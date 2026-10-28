@@ -15,7 +15,8 @@ try{
         $body=file_get_contents('http://127.0.0.1:8766/lancar-porcentagem?area_id='.$area.'&pagina='.$page,false,stream_context_create(['http'=>['header'=>'Cookie: '.$cookie."\r\n",'ignore_errors'=>true,'follow_location'=>0,'timeout'=>20]]));
         if(!str_contains($http_response_header[0]??'',' 200 '))throw new RuntimeException('Tela indisponível.');
         $dom=new DOMDocument();@$dom->loadHTML($body);$xp=new DOMXPath($dom);
-        if($xp->query('//main//table/thead/tr/th')->length!==4||$xp->query('//*[@data-percentage]')->length>50||!$xp->query('//*[@id="porcentagens-salvar"]')->length)throw new RuntimeException('Estrutura da tela divergente.');
+        $weeks=$xp->query('//*[@data-week-header]')->length;$orders=$xp->query('//*[@data-order-row]')->length;
+        if($xp->query('//main//table/thead/tr/th')->length!==4+$weeks||$orders>50||$xp->query('//*[@data-percentage]')->length!==$orders*$weeks||!$xp->query('//*[@id="porcentagens-salvar"]')->length)throw new RuntimeException('Estrutura da planilha semanal divergente.');
         foreach(['setor_id','caderno_id','referencia','observacoes','motivo'] as $field)if($xp->query('//*[@name="'.$field.'"]')->length)throw new RuntimeException('Campo removido reapareceu.');
         if(str_contains($dom->textContent,'Sem atualização na semana'))throw new RuntimeException('Status semanal indevido.');
         if($page===1)file_put_contents(TMP.'porcentagens-lote-preview.html',str_replace(['href="/','src="/'],['href="http://localhost:8766/','src="http://localhost:8766/'],$body));
