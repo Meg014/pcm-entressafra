@@ -54,6 +54,130 @@ class FilaPcmUnificadaTest extends TestCase
         $revisions=[];foreach($this->selection($ids,$category==='horas'?'Apontamentos':'Insumos') as $row)$revisions[$row['id']]=$row['revisao'];
         return ['categoria'=>$category,'selecionados'=>$ids,'revisoes'=>$revisions,'acao'=>$action,'confirmar'=>'1','motivo'=>$reason];
     }
+    private function bulkPreview(int $index=0): array
+    {
+        $this->get('/fila-pcm?excluir_os='.$this->activities[$index].'&evolucao=concluidas&pagina=3');
+        $this->assertResponseOk();
+        PeriodoContexto::set($this->season);
+        $this->session(['CancelamentoOs'=>$_SESSION['CancelamentoOs']]);
+        return $this->viewVariable('bulkCancellation');
+    }
+    private function bulkPost(array $preview,string $reason='Registros incorretos'): array
+    {
+        return ['confirmacao'=>$preview['token'],'confirmar'=>'1','motivo'=>$reason];
+    }
+    public function testBulkCancellationHoursOnlySuppliesOnlyAndBoth(): void
+    {
+        $hours=[$this->hours(),$this->hours(2,'pessoa-2')];$supplies=[$this->supplies(1)[0],$this->supplies(2)[0]];
+        $orders=Access::table('Atividades')->find()->orderBy(['id'])->all()->toArray();
+        $evolution=Access::table('EvolucaoRegistros')->find()->orderBy(['id'])->all()->toArray();
+        foreach ([[1,0],[0,1],[1,1]] as $index=>[$hourCount,$supplyCount]) {
+            $preview=$this->bulkPreview($index);
+            $this->assertSame($hourCount,$preview['preview']['apontamentos']);$this->assertSame($supplyCount,$preview['preview']['insumos']);
+            $this->assertResponseContains('Justificativa da exclusão');$this->assertResponseContains('Confirmar exclusão');
+            $this->post('/fila-pcm/os/'.$this->activities[$index].'/excluir-registros?evolucao=concluidas&pagina=3',$this->bulkPost($preview));
+            $this->assertRedirect();$this->assertStringContainsString('pagina=3',$this->_response->getHeaderLine('Location'));
+        }
+        foreach ($hours as $id)$this->assertTrue(Access::table('Apontamentos')->get($id)->cancelado);
+        foreach ($supplies as $id)$this->assertTrue(Access::table('Insumos')->get($id)->cancelado);
+        $this->assertSame(0,(new FilaPcm())->queueCount(Access::actor($this->admin)));
+        foreach ((new FilaPcm())->metrics($this->activities) as $metric){$this->assertSame(0,(int)$metric['minutos']);$this->assertSame(0,(int)$metric['pendentes']);}
+        $this->assertEquals($orders,Access::table('Atividades')->find()->orderBy(['id'])->all()->toArray());
+        $this->assertEquals($evolution,Access::table('EvolucaoRegistros')->find()->orderBy(['id'])->all()->toArray());
+        $this->get('/fila-pcm');$this->assertResponseNotContains('Excluir registros');
+    }
+    public function testBulkCancellationIncludesAllPagesAndAuditsOriginalRecords(): void
+    {
+        $ids=[];for($i=0;$i<11;$i++)$ids[]=$this->hours(0,'pessoa-'.$i);
+        $supplies=$this->supplies(0,12);$originalHours=Access::table('Apontamentos')->get($ids[0])->toArray();$originalSupply=Access::table('Insumos')->get($supplies[0])->toArray();
+        $foreignHour=$this->hours(1,'pessoa-outra');$foreignSupply=$this->supplies(1)[0];
+        $preview=$this->bulkPreview();$this->assertSame(11,$preview['preview']['apontamentos']);$this->assertSame(12,$preview['preview']['insumos']);
+        if(getenv('FILA_CANCEL_PREVIEW'))file_put_contents(TMP.'fila-cancelamento-preview.html',(string)$this->_response->getBody());
+        $this->post('/fila-pcm/os/'.$this->activities[0].'/excluir-registros',$this->bulkPost($preview));$this->assertRedirect();
+        $this->assertSame(11,Access::table('Apontamentos')->find()->where(['atividade_id'=>$this->activities[0],'cancelado'=>true])->count());
+        $this->assertSame(12,Access::table('Insumos')->find()->where(['atividade_id'=>$this->activities[0],'cancelado'=>true])->count());
+        $this->assertFalse(Access::table('Apontamentos')->get($foreignHour)->cancelado);$this->assertFalse(Access::table('Insumos')->get($foreignSupply)->cancelado);
+        foreach (['Apontamentos'=>[$ids[0],$originalHours,'cancelar','apontamento_id'],'Insumos'=>[$supplies[0],$originalSupply,'insumo_cancelar','insumo_id']] as $alias=>[$id,$original,$action,$key]) {
+            $row=Access::table($alias)->get($id);$audit=Access::table('Auditorias')->find()->where([$key=>$id,'acao'=>$action])->firstOrFail();
+            $this->assertSame($this->admin,(int)$row->alterado_por);$this->assertNotEmpty($row->modified);$this->assertSame('Registros incorretos',$audit->motivo);
+            $this->assertEquals(json_decode(json_encode($original),true),json_decode($audit->antes,true));
+            foreach ($original as $field=>$value)if(!in_array($field,['cancelado','alterado_por','modified','revisao_pcm'],true))$this->assertEquals($value,$row->get($field));
+        }
+        $batch=Access::table('Auditorias')->find()->where(['acao'=>'lote_cancelamento_os'])->firstOrFail();$after=json_decode($batch->depois,true);
+        $this->assertSame($ids,$after['ids']['apontamentos']);$this->assertSame($supplies,$after['ids']['insumos']);$this->assertSame($this->season,$after['entressafra_id']);$this->assertSame('os-0',$after['os_numero']);
+        $this->get('/fila-pcm/os/'.$this->activities[0]);$this->assertResponseOk();$this->assertResponseContains('Cancelamento em lote da O.S.');$this->assertResponseContains('Cancelamento de insumo');$this->assertResponseContains('Cancelado');
+        $dom=new \DOMDocument();@$dom->loadHTML((string)$this->_response->getBody());$xp=new \DOMXPath($dom);$this->assertSame(0,$xp->query('//input[@name="selecionados[]"]')->length);
+        $this->get('/insumos');$this->assertResponseOk();$this->assertResponseContains('Cancelado');
+        $this->expectException(\DomainException::class);
+        (new FilaPcm())->confirmSupplies($this->admin,$this->activities[0],$this->selection([$supplies[0]]),'lancado','',true);
+    }
+    public function testBulkCancellationBlocksEntireOrderWhenAnyHourOrSupplyIsConfirmed(): void
+    {
+        $id=$this->hours();$supplies=$this->supplies();$service=new FilaPcm();$cancel=new \App\Service\CancelamentoRegistrosOs();
+        foreach (['horas','insumos'] as $category) {
+            PeriodoContexto::set($this->season);
+            $before=$cancel->preview($this->admin,$this->activities[0]);
+            if($category==='horas')$service->confirm($this->admin,$this->activities[0],$this->selection([$id],'Apontamentos'),'lancado','',true);
+            else $service->confirmSupplies($this->admin,$this->activities[0],$this->selection($supplies),'lancado','',true);
+            $preview=$this->bulkPreview();$this->assertTrue($preview['preview']['bloqueado']);$this->assertResponseContains('tratamento individual');$this->assertResponseNotContains('Confirmar exclusão');
+            try{$cancel->cancel($this->admin,$this->activities[0],'Erro',true,$before['assinatura']);$this->fail('TOTVS confirmado');}catch(\DomainException $e){$this->assertStringContainsString('TOTVS',$e->getMessage());}
+            $this->post('/fila-pcm/os/'.$this->activities[0].'/excluir-registros',$this->bulkPost($preview));$this->assertRedirect();
+            $this->assertFalse(Access::table('Apontamentos')->get($id)->cancelado);$this->assertFalse(Access::table('Insumos')->get($supplies[0])->cancelado);
+            if($category==='horas')$service->confirm($this->admin,$this->activities[0],$this->selection([$id],'Apontamentos'),'pendente','Conferência individual',true);
+        }
+        $this->assertSame(0,Access::table('Auditorias')->find()->where(['acao IN'=>['cancelar','insumo_cancelar','lote_cancelamento_os']])->count());
+    }
+    public function testBulkCancellationRejectsNonAdminsAndMissingConfirmationOrReason(): void
+    {
+        $id=$this->hours();$cancel=new \App\Service\CancelamentoRegistrosOs();$signature=$cancel->preview($this->admin,$this->activities[0])['assinatura'];
+        foreach([$this->pcm,$this->responsible] as $actor){
+            $this->login($actor);$this->get('/fila-pcm');
+            if($actor===$this->pcm){$this->assertResponseOk();$this->assertResponseNotContains('Excluir registros');}
+            $this->get('/fila-pcm?excluir_os='.$this->activities[0]);$this->assertResponseCode(403);
+            $this->post('/fila-pcm/os/'.$this->activities[0].'/excluir-registros',[]);$this->assertResponseCode(403);
+            try{$cancel->cancel($actor,$this->activities[0],'Erro',true,$signature);$this->fail('Permissão indevida');}catch(\Cake\Http\Exception\ForbiddenException $e){$this->assertFalse(Access::table('Apontamentos')->get($id)->cancelado);}
+        }
+        $this->login($this->admin);$preview=$this->bulkPreview();
+        foreach ([['motivo'=>'   '],['confirmar'=>'0'],['confirmacao'=>'invalida'],['motivo'=>['invalida']]] as $invalid) {
+            $this->post('/fila-pcm/os/'.$this->activities[0].'/excluir-registros',array_replace($this->bulkPost($preview),$invalid));$this->assertRedirect();$this->assertFalse(Access::table('Apontamentos')->get($id)->cancelado);
+        }
+        $this->get('/fila-pcm/os/'.$this->activities[0].'/excluir-registros');$this->assertResponseCode(404);
+        $this->_csrfToken=false;$this->post('/fila-pcm/os/'.$this->activities[0].'/excluir-registros',$this->bulkPost($preview));$this->assertResponseCode(403);
+    }
+    public function testBulkCancellationRejectsChangedPreviewAndDuplicateSubmission(): void
+    {
+        $this->hours();$cancel=new \App\Service\CancelamentoRegistrosOs();$preview=$this->bulkPreview();$supply=$this->supplies()[0];
+        $this->post('/fila-pcm/os/'.$this->activities[0].'/excluir-registros',$this->bulkPost($preview));$this->assertRedirect();
+        $this->assertFalse(Access::table('Insumos')->get($supply)->cancelado);
+        $preview=$this->bulkPreview();$this->post('/fila-pcm/os/'.$this->activities[0].'/excluir-registros',$this->bulkPost($preview));$this->assertRedirect();
+        $auditCount=Access::table('Auditorias')->find()->count();
+        $this->post('/fila-pcm/os/'.$this->activities[0].'/excluir-registros',$this->bulkPost($preview));$this->assertRedirect();$this->assertSame($auditCount,Access::table('Auditorias')->find()->count());
+        PeriodoContexto::set($this->season);
+        try{$cancel->cancel($this->admin,$this->activities[0],'Erro',true,$preview['preview']['assinatura']);$this->fail('Lote repetido');}catch(\DomainException $e){$this->assertStringContainsString('Não há registros ativos',$e->getMessage());}
+    }
+    public function testBulkCancellationRollsBackAllRowsWhenBatchAuditFails(): void
+    {
+        $id=$this->hours();$supply=$this->supplies()[0];$cancel=new \App\Service\CancelamentoRegistrosOs();$preview=$cancel->preview($this->admin,$this->activities[0]);$audits=Access::table('Auditorias');$count=$audits->find()->count();
+        $listener=static function($event,$entity){if($entity->acao==='lote_cancelamento_os')throw new \RuntimeException('Auditoria indisponível');};
+        $audits->getEventManager()->on('Model.beforeSave',$listener);
+        try{$cancel->cancel($this->admin,$this->activities[0],'Erro',true,$preview['assinatura']);$this->fail('Falha não propagada');}catch(\RuntimeException $e){$this->assertSame('Auditoria indisponível',$e->getMessage());}
+        finally{$audits->getEventManager()->off('Model.beforeSave',$listener);}
+        $this->assertFalse(Access::table('Apontamentos')->get($id)->cancelado);$this->assertFalse(Access::table('Insumos')->get($supply)->cancelado);$this->assertSame($count,$audits->find()->count());
+    }
+    public function testBulkCancellationIsRestrictedToSelectedOrderAndSeason(): void
+    {
+        $id=$this->hours();$supply=$this->supplies()[0];$preview=$this->bulkPreview();
+        $this->post('/fila-pcm/os/'.$this->activities[1].'/excluir-registros',$this->bulkPost($preview));$this->assertRedirect();
+        $this->assertFalse(Access::table('Apontamentos')->get($id)->cancelado);$this->assertFalse(Access::table('Insumos')->get($supply)->cancelado);
+        $t=Access::table('Entressafras');$other=$t->saveOrFail($t->newEntity(['nome'=>'Outra','data_inicio'=>'2025-01-01','data_fim'=>'2025-12-31','status'=>'planejamento']));
+        PeriodoContexto::set((int)$other->id);
+        try{(new \App\Service\CancelamentoRegistrosOs())->preview($this->admin,$this->activities[0]);$this->fail('Outra entressafra');}catch(\Cake\Http\Exception\ForbiddenException $e){$this->assertTrue(true);}
+        $this->session(['Periodo'=>['id'=>(int)$other->id,'usuario_id'=>$this->admin]]);
+        $this->post('/fila-pcm/os/'.$this->activities[0].'/excluir-registros',$this->bulkPost($preview));$this->assertResponseCode(403);
+        PeriodoContexto::set($this->season);
+        $t->updateAll(['status'=>'encerrada'],['id'=>$this->season]);
+        try{(new \App\Service\CancelamentoRegistrosOs())->cancel($this->admin,$this->activities[0],'Erro',true,$preview['preview']['assinatura']);$this->fail('Entressafra encerrada');}catch(\Cake\Http\Exception\ForbiddenException $e){$this->assertFalse(Access::table('Apontamentos')->get($id)->cancelado);}
+    }
     public function testQueueIncludesHoursOnlySuppliesOnlyAndBothWithoutMultiplyingTotals(): void
     {
         $service=new FilaPcm();$actor=Access::actor($this->admin);$this->assertSame(0,$service->queueCount($actor));

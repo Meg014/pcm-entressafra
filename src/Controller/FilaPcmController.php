@@ -1,7 +1,7 @@
 <?php
 declare(strict_types=1);
 namespace App\Controller;
-use App\Service\{Access,FilaPcm,OrderProgress,OrderDescriptions};
+use App\Service\{Access,FilaPcm,OrderProgress,OrderDescriptions,CancelamentoRegistrosOs,PeriodoContexto};
 use App\Integration\Totvs\ListOrders;
 
 class FilaPcmController extends OperacaoController
@@ -22,6 +22,47 @@ class FilaPcmController extends OperacaoController
         $this->set($result);
         $this->set('presentations',(new OrderDescriptions($orders))->presentations(array_column($result['rows'],'id')));
         $this->set(compact('sectors','filters'));
+        $bulkCancellation=null;
+        $cancelId=$this->request->getQuery('excluir_os');
+        if ($cancelId!==null) {
+            Access::admin($this->currentUser);
+            if (!is_string($cancelId) || !ctype_digit($cancelId) || (int)$cancelId<1) { throw new \Cake\Http\Exception\BadRequestException('O.S. inválida.'); }
+            $activity=$this->activity((int)$cancelId);
+            $preview=(new CancelamentoRegistrosOs())->preview((int)$this->currentUser->id,(int)$activity->id);
+            $token=bin2hex(random_bytes(32));
+            $this->request->getSession()->write('CancelamentoOs.'.$activity->id,[
+                'usuario_id'=>(int)$this->currentUser->id,'entressafra_id'=>PeriodoContexto::id(),
+                'token'=>$token,'assinatura'=>$preview['assinatura'],
+            ]);
+            $description=(new OrderDescriptions($orders))->presentations([(int)$activity->id])[(int)$activity->id]['descricao'];
+            $bulkCancellation=compact('activity','preview','token','description');
+        }
+        $this->set(compact('bulkCancellation'));
+    }
+    private function queueQuery(): array
+    {
+        return array_intersect_key($this->request->getQueryParams(),array_flip(['os_numero','setor','evolucao','pagina','entressafra_id']));
+    }
+    public function cancelRecords($id)
+    {
+        $this->request->allowMethod(['post']);Access::admin($this->currentUser);
+        $this->activity((int)$id);
+        $session=$this->request->getSession();$key='CancelamentoOs.'.(int)$id;
+        try {
+            $confirmation=$session->read($key);$token=$this->request->getData('confirmacao');$reason=$this->request->getData('motivo');
+            if (!is_array($confirmation) || ($confirmation['usuario_id']??null)!==(int)$this->currentUser->id ||
+                ($confirmation['entressafra_id']??null)!==PeriodoContexto::id() || !is_string($token) ||
+                !hash_equals($confirmation['token'],$token)) { throw new \DomainException('Abra a confirmação da O.S. antes de excluir os registros.'); }
+            if (!is_string($reason)) { throw new \DomainException('Informe a justificativa da exclusão.'); }
+            $result=(new CancelamentoRegistrosOs())->cancel((int)$this->currentUser->id,(int)$id,$reason,
+                $this->request->getData('confirmar')==='1',$confirmation['assinatura']);
+            $session->delete($key);
+            $this->Flash->success('O.S. '.$result['os_numero'].': '.$result['apontamentos'].' apontamento(s) e '.$result['insumos'].' insumo(s) cancelado(s). Histórico preservado.');
+            return $this->redirect(['action'=>'index','?'=>$this->queueQuery()]);
+        } catch (\DomainException $e) {
+            $this->Flash->error($e->getMessage());
+            return $this->redirect(['action'=>'index','?'=>['excluir_os'=>(int)$id]+$this->queueQuery()]);
+        }
     }
     public function view($id,ListOrders $orders)
     {

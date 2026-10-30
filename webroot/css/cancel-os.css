@@ -1,0 +1,11 @@
+#cancel-os-dialog {
+    position: fixed;
+    inset: 0;
+    margin: auto;
+    width: min(40rem, calc(100% - 2rem));
+    max-height: calc(100dvh - 2rem);
+    overflow-y: auto;
+    border: 0;
+    z-index: 1055;
+}
+#cancel-os-dialog::backdrop { background: rgb(0 0 0 / 45%); }

@@ -74,6 +74,8 @@ final class TimeEntries
         try {
             return $table->getConnection()->transactional(function () use ($user, $table, $input, $id, $validateOnly): int {
                 if ($id !== null && $table->getConnection()->getDriver() instanceof \Cake\Database\Driver\Postgres) {
+                    $season=Access::table('Atividades')->get($table->get($id)->atividade_id)->entressafra_id;
+                    $table->getConnection()->execute('SELECT id FROM entressafras WHERE id=? FOR SHARE',[(int)$season]);
                     $table->getConnection()->execute('SELECT id FROM apontamentos WHERE id = ? FOR UPDATE', [$id]);
                 }
                 $existing = $id ? $table->get($id) : null;
@@ -231,9 +233,9 @@ final class TimeEntries
         if (!in_array($action, ['cancelar', 'pendente', 'conferido', 'lancado'], true)) { throw new \DomainException('Operação inválida.'); }
         $table = Access::table('Apontamentos');
         $table->getConnection()->transactional(function () use ($user, $table, $id, $action, $reason, $activityId, $revision): void {
-            if ($action==='cancelar' && $table->getConnection()->getDriver() instanceof \Cake\Database\Driver\Postgres) {
+            if ($table->getConnection()->getDriver() instanceof \Cake\Database\Driver\Postgres) {
                 $season=Access::table('Atividades')->get($table->get($id)->atividade_id)->entressafra_id;
-                $table->getConnection()->execute('SELECT id FROM entressafras WHERE id=? FOR UPDATE',[(int)$season]);
+                $table->getConnection()->execute('SELECT id FROM entressafras WHERE id=? FOR '.($action==='cancelar'?'UPDATE':'SHARE'),[(int)$season]);
             }
             if ($table->getConnection()->getDriver() instanceof \Cake\Database\Driver\Postgres) { $table->getConnection()->execute('SELECT id FROM apontamentos WHERE id = ? FOR UPDATE', [$id]); }
             $row = $table->get($id);

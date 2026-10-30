@@ -28,7 +28,7 @@ final class FilaPcm
             LEFT JOIN (SELECT atividade_id,COUNT(*) AS quantidade,SUM(minutos) AS minutos,MIN(created) AS recebido
                 FROM apontamentos WHERE NOT cancelado AND controle_pcm IN ('pendente','conferido') GROUP BY atividade_id) p ON p.atividade_id=a.id
             LEFT JOIN (SELECT atividade_id,COUNT(*) AS quantidade,MIN(created) AS recebido
-                FROM insumos WHERE controle_pcm='pendente' GROUP BY atividade_id) i ON i.atividade_id=a.id
+                FROM insumos WHERE NOT cancelado AND controle_pcm='pendente' GROUP BY atividade_id) i ON i.atividade_id=a.id
             WHERE (p.quantidade>0 OR i.quantidade>0)".(PeriodoContexto::id()!==null?' AND a.entressafra_id='.(int)PeriodoContexto::id():'').$sectorWhere;
     }
     public function queue($user,?int $page=null,array $filters=[]): array
@@ -111,7 +111,7 @@ final class FilaPcm
             foreach($ids as $id=>$rev){
                 if($this->db()->getDriver() instanceof \Cake\Database\Driver\Postgres){$this->db()->execute('SELECT id FROM '.$sqlTable.' WHERE id=? FOR UPDATE',[$id]);}
                 $row=$table->find()->where(['id'=>$id,'atividade_id'=>$activity])->first();
-                if(!$row || (!$supplies && $row->cancelado))throw new \DomainException('Registro cancelado ou fora da O.S. selecionada.');
+                if(!$row || $row->cancelado)throw new \DomainException('Registro cancelado ou fora da O.S. selecionada.');
                 if((int)$row->revisao_pcm!==$rev)throw new \DomainException('Registro alterado por outra pessoa. Atualize a tela.');
                 if(($action==='lancado'&&$row->controle_pcm==='lancado')||($action==='pendente'&&$row->controle_pcm!=='lancado'))throw new \DomainException('Registro já tratado ou confirmação não corresponde ao estado atual.');
                 $before=$row->toArray();$statuses[]=['id'=>$id,'anterior'=>$row->controle_pcm,'novo'=>$action];

@@ -26,6 +26,7 @@ return function (RouteBuilder $routes): void {
         $builder->connect('/operacao/identificar',['controller'=>'Operacional','action'=>'identificar'])->setMethods(['POST']);
         $builder->connect('/lancar-porcentagem',['controller'=>'Operacional','action'=>'porcentagem'])->setMethods(['GET','POST']);
         $builder->connect('/fila-pcm',['controller'=>'FilaPcm','action'=>'index'])->setMethods(['GET']);
+        $builder->connect('/fila-pcm/os/{id}/excluir-registros',['controller'=>'FilaPcm','action'=>'cancelRecords'])->setPatterns(['id'=>'[1-9][0-9]*'])->setPass(['id'])->setMethods(['POST']);
         $builder->connect('/fila-pcm/os/{id}',['controller'=>'FilaPcm','action'=>'view'])->setPatterns(['id'=>'[1-9][0-9]*'])->setPass(['id'])->setMethods(['GET','POST']);
         $builder->connect('/evolucao',['controller'=>'Evolucao','action'=>'index'])->setMethods(['GET','POST']);
         $builder->connect('/evolucao/correcoes',['controller'=>'Evolucao','action'=>'correcoes'])->setMethods(['GET','POST']);
