@@ -327,4 +327,51 @@ class FilaPcmUnificadaTest extends TestCase
             $this->get('/fila-pcm/os/'.$this->activities[0]);$this->assertResponseOk();$this->assertResponseContains('Descrição histórica preservada');
         }
     }
-}
+    public function testOrderNumberFilterPreservesZerosOverridesSectorAndKeepsEvolution(): void
+    {
+        $this->hours();$this->supplies(1);$this->hours(2,'pessoa-2');$this->supplies(2);
+        $t=Access::table('Atividades');
+        foreach(['006099','006100','006101'] as $i=>$number)$t->updateAll(['os_numero'=>$number],['id'=>$this->activities[$i]]);
+        $sector=array_key_first((new FilaPcm())->sectorOptions(Access::actor($this->admin)));
+        foreach(['006099','006100','006101'] as $i=>$number){
+            $this->get('/fila-pcm?os_numero='.$number);$this->assertResponseOk();$this->assertCount(1,$this->viewVariable('rows'));$this->assertSame($number,$this->viewVariable('rows')[0]['os_numero']);
+        }
+        $actor=Access::actor($this->admin);$service=new FilaPcm();
+        $this->assertCount(1,$service->queue($actor,null,['os_numero'=>'006099','setor'=>'equipe_999999','evolucao'=>'concluidas']));
+        $this->assertCount(0,$service->queue($actor,null,['os_numero'=>'006099','evolucao'=>'andamento']));
+        $this->get('/fila-pcm?os_numero=006099&setor='.$sector.'&evolucao=concluidas');$this->assertResponseOk();$this->assertResponseContains('value="006099"');
+        foreach(['os_numero[]=1','os_numero=1%27','os_numero=abc'] as $query){$this->get('/fila-pcm?'.$query);$this->assertResponseCode(400);}
+    }
+    public function testIndividualCancellationAuditsOriginalAndPreservesOtherEntriesAndSupplies(): void
+    {
+        $id=$this->hours();$other=$this->hours(0,'pessoa-2');$supplies=$this->supplies();
+        $t=Access::table('Apontamentos');$before=$t->get($id)->toArray();$otherBefore=$t->get($other)->toArray();$supplyBefore=Access::table('Insumos')->get($supplies[0])->toArray();
+        $this->get('/fila-pcm/os/'.$this->activities[0].'?cancelar='.$id);$this->assertResponseOk();$this->assertResponseContains('Justificativa da exclusão');$this->assertResponseContains('Serviço de teste 0');
+        $data=['acao'=>'cancelar','apontamento_id'=>(string)$id,'revisao'=>(string)$before['revisao_pcm'],'confirmar'=>'1','motivo'=>'Registro incorreto'];
+        $this->post('/fila-pcm/os/'.$this->activities[0],$data);$this->assertRedirect();
+        $row=$t->get($id);$this->assertTrue($row->cancelado);$this->assertSame($this->admin,(int)$row->alterado_por);
+        foreach(['descricao','minutos','inicio','fim','snapshot','funcionario_chave','atividade_id'] as $field)$this->assertEquals($before[$field],$row->get($field));
+        $audit=Access::table('Auditorias')->find()->where(['apontamento_id'=>$id,'acao'=>'cancelar'])->firstOrFail();
+        $this->assertSame('Registro incorreto',$audit->motivo);$this->assertSame($this->admin,(int)$audit->usuario_id);$this->assertNotEmpty($audit->created);$this->assertFalse(json_decode($audit->antes,true)['cancelado']);$this->assertTrue(json_decode($audit->depois,true)['cancelado']);
+        $this->assertEquals($otherBefore,$t->get($other)->toArray());$this->assertEquals($supplyBefore,Access::table('Insumos')->get($supplies[0])->toArray());
+        $queue=(new FilaPcm())->queue(Access::actor($this->admin));$this->assertSame(120,(int)$queue[0]['minutos']);$this->assertSame(1,(int)$queue[0]['apontamentos_pendentes']);$this->assertSame(1,(int)$queue[0]['insumos_pendentes']);
+        $this->post('/fila-pcm/os/'.$this->activities[0],$data);$this->assertResponseOk();$this->assertSame(1,Access::table('Auditorias')->find()->where(['apontamento_id'=>$id,'acao'=>'cancelar'])->count());
+        (new TimeEntries(new FakeTotvs()))->change($this->admin,$other,'cancelar','Outro registro incorreto',$this->activities[0]);
+        $this->assertSame(0,(int)(new FilaPcm())->metrics([$this->activities[0]])[$this->activities[0]]['minutos']);
+        (new FilaPcm())->confirmSupplies($this->admin,$this->activities[0],$this->selection($supplies),'lancado','',true);$this->assertSame(0,(new FilaPcm())->queueCount(Access::actor($this->admin)));
+    }
+    public function testCancellationRejectsRolesMissingReasonForeignOrderStaleRevisionAndTotvs(): void
+    {
+        $id=$this->hours();$service=new TimeEntries(new FakeTotvs());
+        foreach([$this->pcm,$this->responsible] as $actor){
+            try{$service->change($actor,$id,'cancelar','Erro');$this->fail('Permissão indevida');}catch(\Cake\Http\Exception\ForbiddenException $e){$this->assertFalse(Access::table('Apontamentos')->get($id)->cancelado);}
+            $this->login($actor);$this->post('/fila-pcm/os/'.$this->activities[0],['acao'=>'cancelar']);$this->assertResponseCode(403);
+        }
+        $this->login($this->admin);
+        foreach([['',$this->activities[0],0],['Erro',$this->activities[1],0],['Erro',$this->activities[0],99]] as [$reason,$activity,$revision]){
+            try{$service->change($this->admin,$id,'cancelar',$reason,$activity,$revision);$this->fail('Cancelamento indevido');}catch(\DomainException $e){$this->assertFalse(Access::table('Apontamentos')->get($id)->cancelado);}
+        }
+        (new FilaPcm())->confirm($this->admin,$this->activities[0],$this->selection([$id],'Apontamentos'),'lancado','',true);
+        try{$service->change($this->admin,$id,'cancelar','Erro',$this->activities[0]);$this->fail('TOTVS confirmado');}catch(\DomainException $e){$this->assertFalse(Access::table('Apontamentos')->get($id)->cancelado);}
+        $this->assertSame(0,Access::table('Auditorias')->find()->where(['apontamento_id'=>$id,'acao'=>'cancelar'])->count());
+    }}

@@ -10,7 +10,9 @@ class FilaPcmController extends OperacaoController
     {
         Access::pcm($this->currentUser);$service=new FilaPcm();
         $sectors=$service->sectorOptions($this->currentUser);
-        $filters=['setor'=>$this->request->getQuery('setor',''),'evolucao'=>$this->request->getQuery('evolucao','')];
+        $number=$this->request->getQuery('os_numero','');
+        if (!is_string($number) || (trim($number)!=='' && !preg_match('/^[0-9]{1,60}$/D',trim($number)))) { throw new \Cake\Http\Exception\BadRequestException('Número da O.S. inválido.'); }
+        $filters=['os_numero'=>trim($number),'setor'=>$this->request->getQuery('setor',''),'evolucao'=>$this->request->getQuery('evolucao','')];
         if (!is_string($filters['setor']) || ($filters['setor']!=='' && !array_key_exists($filters['setor'],$sectors)) ||
             !is_string($filters['evolucao']) || !in_array($filters['evolucao'],['','zero','andamento','concluidas'],true)) {
             throw new \Cake\Http\Exception\BadRequestException('Filtros inválidos.');
@@ -26,7 +28,15 @@ class FilaPcmController extends OperacaoController
         Access::pcm($this->currentUser);$activity=$this->activity((int)$id);
         if($this->request->is('post')){
             try{
-                $data=$this->request->getData();$category=$data['categoria']??'horas';
+                $data=$this->request->getData();
+                if (($data['acao']??'')==='cancelar') {
+                    Access::admin($this->currentUser);
+                    if (($data['confirmar']??'')!=='1' || !is_string($data['motivo']??null) || !is_string($data['apontamento_id']??null) || !ctype_digit($data['apontamento_id']) || !is_string($data['revisao']??null) || !ctype_digit($data['revisao'])) { throw new \DomainException('Confirme o apontamento e informe a justificativa.'); }
+                    (new \App\Service\TimeEntries($this->totvs()))->change((int)$this->currentUser->id,(int)$data['apontamento_id'],'cancelar',$data['motivo'],(int)$id,(int)$data['revisao']);
+                    $this->Flash->success('Apontamento cancelado com histórico preservado.');
+                    return $this->redirect(['action'=>'view',$id,'?'=>array_diff_key($this->request->getQueryParams(),['cancelar'=>true]),'#'=>'horas']);
+                }
+                $category=$data['categoria']??'horas';
                 if(!in_array($category,['horas','insumos'],true))throw new \DomainException('Categoria inválida.');
                 if(!is_array($data['selecionados']??null)||!is_array($data['revisoes']??null))throw new \DomainException('Selecione os registros desta categoria.');
                 foreach(['acao','motivo','confirmar'] as $field)if(isset($data[$field])&&!is_string($data[$field]))throw new \DomainException('Operação inválida.');
@@ -48,6 +58,14 @@ class FilaPcmController extends OperacaoController
             'insumo_id IN'=>$this->fetchTable('Insumos')->find()->select(['id'])->where(['atividade_id'=>(int)$id]),
         ]])->orderBy(['Auditorias.created'=>'DESC','Auditorias.id'=>'DESC']);
         [$history,$historyPage,$historyPages,$historyTotal]=$this->sectionPage($historyQuery,'historico_pagina',20);
+        $cancelEntry=null;
+        $cancelId=$this->request->getQuery('cancelar');
+        if ($cancelId!==null) {
+            Access::admin($this->currentUser);
+            if (!is_string($cancelId) || !ctype_digit($cancelId)) { throw new \Cake\Http\Exception\BadRequestException('Apontamento inválido.'); }
+            $cancelEntry=$this->fetchTable('Apontamentos')->find()->where(['id'=>(int)$cancelId,'atividade_id'=>(int)$id])->firstOrFail();
+        }
+        $this->set(compact('cancelEntry'));
         $completion=OrderProgress::status((int)$id);
         $presentation=(new OrderDescriptions($orders))->presentations([(int)$activity->id])[(int)$activity->id];
         $this->set(compact('presentation'));

@@ -205,7 +205,7 @@ class EtapaDoisTest extends TestCase
     public function testLogicalCancellationAndControlHistory(): void
     {
         $id=$this->entries->save($this->admin,$this->input());
-        foreach(['conferido','lancado','pendente','cancelar'] as $action) { $this->entries->change($this->pcm,$id,$action,'Conferência de teste'); }
+        foreach(['conferido','lancado','pendente','cancelar'] as $action) { $this->entries->change($action==='cancelar'?$this->admin:$this->pcm,$id,$action,'Conferência de teste'); }
         $row=Access::table('Apontamentos')->get($id); $this->assertTrue($row->cancelado);
         $this->assertSame(5,Access::table('Auditorias')->find()->where(['apontamento_id'=>$id])->count());
         $this->entries->save($this->responsavel,$this->input());

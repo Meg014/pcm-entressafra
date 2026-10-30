@@ -6,7 +6,9 @@ final class FilaPcm
     private function db() { return Access::table('Apontamentos')->getConnection(); }
     private function pendingQuery(array $filters=[]): string
     {
-        $sector=$filters['setor']??'';
+        $number=trim((string)($filters['os_numero']??''));
+        if ($number!=='' && !preg_match('/^[0-9]{1,60}$/D',$number)) { throw new \DomainException('Número da O.S. inválido.'); }
+        $sector=$number!==''?'':($filters['setor']??'');
         $sectorWhere='';
         if (ctype_digit((string)$sector) && (int)$sector>0) {
             $sectorWhere=' AND c.area_curva_id='.(int)$sector;
@@ -15,6 +17,7 @@ final class FilaPcm
         } elseif ($sector!=='') {
             $sectorWhere=' AND 1=0';
         }
+        if ($number!=='') { $sectorWhere=" AND a.os_numero='".$number."'"; }
         return "SELECT a.id,a.os_numero,a.os_filial,a.servico,a.bem,s.nome AS setor,
             COALESCE(p.quantidade,0) AS quantidade,COALESCE(p.quantidade,0) AS apontamentos_pendentes,
             COALESCE(i.quantidade,0) AS insumos_pendentes,COALESCE(p.minutos,0) AS minutos,
