@@ -27,24 +27,34 @@
   for(let i=0;i<index;i++){const v=numeric(sameOrder[i].value);if(v!==null)previous=v;}
   for(let i=index+1;i<sameOrder.length;i++){const v=numeric(sameOrder[i].value);if(v!==null){next=v;break;}}
   const exceptional=value!==null&&(value<previous||(base!==null&&value<base)||(next!==null&&value>next));
-  details.hidden=!(exceptional||row.confirmar_reducao||row.motivo||details.dataset.serverError);
+  const stale=row.base!==base||row.base_registro!==Number(input.dataset.record)||row.revisao!==Number(input.dataset.revision);
+  details.hidden=!(stale||exceptional||row.confirmar_reducao||row.motivo||details.dataset.serverError);
+  if(stale){details.open=true;error.textContent='Há rascunhos baseados em valores anteriores. Compare com o valor carregado antes de salvar; conflitos não serão sobrescritos.';}
   if(exceptional)details.open=true;
  };
  inputs.forEach(input=>{
   const cell=input.closest('[data-cell]'),details=cell.querySelector('details'),reason=cell.querySelector('[data-correction-reason]'),confirmation=cell.querySelector('[data-confirm-reduction]');
   const saved=draft.rows[keyOf(input)];if(saved){input.value=saved.percentual;reason.value=saved.motivo||'';confirmation.checked=!!saved.confirmar_reducao;}
   const update=()=>{
-   const value=input.value.trim(),base=numeric(input.dataset.base),cellKey=keyOf(input);
+   const cellKey=keyOf(input),original=draft.rows[cellKey];
+   // A restored draft must retain the revision it was actually based on.
+   const base=original?original.base:numeric(input.dataset.base),value=input.value.trim();
    if(value===''&&base===null||value!==''&&numeric(value)===base){delete draft.rows[cellKey];input.removeAttribute('aria-invalid');}
-   else draft.rows[cellKey]={atividade_id:Number(input.dataset.id),referencia:input.dataset.reference,percentual:value,base,base_registro:Number(input.dataset.record),revisao:Number(input.dataset.revision),motivo:reason.value,confirmar_reducao:confirmation.checked,os_numero:input.dataset.os,semana:Number(input.dataset.week)};
+   else draft.rows[cellKey]={atividade_id:Number(input.dataset.id),referencia:input.dataset.reference,percentual:value,base,base_registro:original?original.base_registro:Number(input.dataset.record),revisao:original?original.revisao:Number(input.dataset.revision),motivo:reason.value,confirmar_reducao:confirmation.checked,os_numero:input.dataset.os,semana:Number(input.dataset.week)};
    draft.key=newKey();inputs.filter(other=>other.dataset.id===input.dataset.id).forEach(decorate);remember();
   };
   input.addEventListener('input',update);reason.addEventListener('input',update);confirmation.addEventListener('change',update);
+  cell.querySelector('[data-use-saved]').addEventListener('click',()=>{
+   if(busy)return;
+   delete draft.rows[keyOf(input)];input.value=input.dataset.base;reason.value='';confirmation.checked=false;
+   delete details.dataset.serverError;input.removeAttribute('aria-invalid');
+   draft.key=newKey();inputs.filter(other=>other.dataset.id===input.dataset.id).forEach(decorate);remember();
+  });
   input.addEventListener('keydown',event=>{if(event.key==='Enter'){event.preventDefault();const next=inputs[inputs.indexOf(input)+1];if(next){next.focus();next.select();}}});
  });
  inputs.forEach(decorate);remember();
  root.querySelectorAll('[data-batch-page]').forEach(link=>link.addEventListener('click',event=>{if(busy||!storageOK){event.preventDefault();error.textContent='Salve antes de navegar.';}else internal=true;}));
- filters.addEventListener('submit',event=>{if(busy||!storageOK){event.preventDefault();error.textContent='Aguarde o salvamento antes de navegar.';}});
+ filters.addEventListener('submit',event=>{if(busy||!storageOK){event.preventDefault();error.textContent='Aguarde o salvamento antes de navegar.';}else internal=true;});
  window.addEventListener('beforeunload',event=>{if(Object.keys(draft.rows).length&&!internal){event.preventDefault();event.returnValue='';}});
  form.addEventListener('submit',async event=>{
   event.preventDefault();if(busy)return;const rows=Object.values(draft.rows);if(!rows.length)return;
@@ -56,8 +66,11 @@
    const response=await fetch(form.action,{method:'POST',body:new FormData(form),headers:{'X-Requested-With':'XMLHttpRequest','X-CSRF-Token':form.elements._csrfToken.value}});
    if(response.redirected)throw Error('Entre novamente para retomar o lançamento.');
    if(response.status===403)throw Error('Sem autorização para salvar ou sessão expirada.');
-   const result=await response.json();if(!response.ok||!result.ok)throw Error(result.error||'Não foi possível salvar.');
-   sessionStorage.removeItem(storage);draft.rows={};internal=true;location.reload();
+   const result=await response.json();if(!response.ok||!result.ok||!Number.isInteger(result.quantidade)||result.quantidade<0||result.quantidade>rows.length||!Array.isArray(result.celulas)||result.celulas.length!==result.quantidade)throw Error(result.error||'Não foi possível confirmar o salvamento.');
+   // Do not turn a committed save into an apparent failure if local storage is unavailable.
+   draft.rows={};internal=true;
+   try{sessionStorage.removeItem(storage);}catch(_){/* The reload reads the committed database values. */}
+   location.reload();
   }catch(failure){error.textContent=failure.message+' As alterações digitadas foram mantidas.';inputs.forEach(input=>{if(draft.rows[keyOf(input)]){input.setAttribute('aria-invalid','true');const details=input.closest('[data-cell]').querySelector('details');details.dataset.serverError='1';decorate(input);}});}
   finally{busy=false;controls.forEach(input=>input.disabled=false);remember();}
  });

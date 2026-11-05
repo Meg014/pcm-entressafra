@@ -95,11 +95,13 @@ final class EvolucaoSemanal
                 elseif(!$db->execute('SELECT id FROM evolucao_semanas WHERE entressafra_id=? AND referencia=?',[$season,$targetRef])->fetch('assoc'))$db->insert('evolucao_semanas',['entressafra_id'=>$season,'referencia'=>$targetRef]);
                 $week=$db->execute('SELECT id FROM evolucao_semanas WHERE entressafra_id=? AND referencia=?',[$season,$targetRef])->fetch('assoc');$revision=(int)$db->execute('SELECT MAX(revisao) AS n FROM evolucao_registros WHERE atividade_id=? AND semana_id=?',[$id,$week['id']])->fetch('assoc')['n']+1;
                 $db->insert('evolucao_registros',['atividade_id'=>$id,'semana_id'=>$week['id'],'percentual'=>$r['percentual'],'revisao'=>$revision,'usuario_id'=>$actor,'observacoes'=>'Grade semanal — acumulado','motivo'=>$r['motivo'],'created'=>$now]);
+                $persisted=$db->execute('SELECT id,percentual,revisao FROM evolucao_registros WHERE atividade_id=? AND semana_id=? AND revisao=?',[$id,$week['id'],$revision])->fetch('assoc');
+                if(!$persisted||(float)$persisted['percentual']!==$r['percentual'])throw new \Cake\Database\Exception\DatabaseException('Não foi possível confirmar a porcentagem gravada.');
                 Access::audit($user,$r['old']||$r['exceptional']?'evolucao_correcao':'evolucao_lancamento',null,$r['old'],['atividade_id'=>$id,'os_numero'=>$activities[$id]->os_numero,'referencia'=>$targetRef,'fim_semana'=>$ref,'semana'=>$weeks[$ref]['semana'],'percentual'=>$r['percentual'],'acumulado_anterior'=>$r['acumulado_anterior'],'revisao'=>$revision,'confirmar_reducao'=>$r['confirmar_reducao'],'retroativo'=>$ref<$this->today()],$r['motivo']?:null);
-                $saved[]=['atividade_id'=>$id,'referencia'=>$ref];
+                $saved[]=['atividade_id'=>$id,'referencia'=>$ref,'percentual'=>(float)$persisted['percentual'],'registro_id'=>(int)$persisted['id'],'revisao'=>(int)$persisted['revisao']];
             }
             $result=['quantidade'=>count($saved),'atividades'=>array_values(array_unique(array_column($saved,'atividade_id'))),'celulas'=>$saved];
-            if($saved)$db->insert('evolucao_lotes',['usuario_id'=>$actor,'chave'=>$batchKey,'hash'=>$hash,'resultado'=>json_encode($result,JSON_THROW_ON_ERROR),'created'=>$now]);return $result;
+            if($saved)$db->insert('evolucao_lotes',['usuario_id'=>$actor,'chave'=>$batchKey,'hash'=>$hash,'resultado'=>json_encode($result,JSON_THROW_ON_ERROR|JSON_PRESERVE_ZERO_FRACTION),'created'=>$now]);return $result;
         });
     }
 }

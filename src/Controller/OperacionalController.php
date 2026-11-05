@@ -19,6 +19,7 @@ class OperacionalController extends OperacaoController
     }
     public function porcentagem()
     {
+        $this->response=$this->response->withHeader('Cache-Control','no-store, private');
         $service=new \App\Service\EvolucaoSemanal();$season=(int)\App\Service\PeriodoContexto::id();
         $area=(int)$this->request->getQuery('area_id',0);$search=$this->request->getQuery('os','');$pending=[];
         $key=(string)($this->request->getData('chave')??bin2hex(random_bytes(16)));$ajax=$this->request->getHeaderLine('X-Requested-With')==='XMLHttpRequest';
@@ -32,13 +33,18 @@ class OperacionalController extends OperacaoController
                 try{$pending=json_decode($json,true,512,JSON_THROW_ON_ERROR);}catch(\JsonException){throw new \DomainException('Alterações inválidas.');}
                 if(!is_array($pending))throw new \DomainException('Alterações inválidas.');
                 $result=$service->save((int)$this->currentUser->id,$season,$area,$pending,$key);
-                $this->Flash->success($result['quantidade'].' percentuais registrados com sucesso.');
+                $this->Flash->success($result['quantidade']>0?$result['quantidade'].' porcentagens salvas com sucesso.':'Nenhuma porcentagem alterada.');
                 if($ajax)return $this->response->withType('application/json')->withHeader('Cache-Control','no-store')->withStringBody(json_encode(['ok'=>true]+$result));
                 return $this->redirect($this->request->getRequestTarget());
             }
         }catch(\DomainException $e){
             if($ajax)return $this->response->withStatus(422)->withType('application/json')->withStringBody(json_encode(['error'=>$e->getMessage()]));
             $this->Flash->error($e->getMessage());
+        }catch(\PDOException|\Cake\Database\Exception\DatabaseException $e){
+            \Cake\Log\Log::error('Falha ao salvar porcentagens: '.$e->getMessage());
+            $message='Não foi possível confirmar o salvamento no banco. Suas alterações foram mantidas. Tente novamente; se persistir, contate o PCM.';
+            if($ajax)return $this->response->withStatus(503)->withType('application/json')->withStringBody(json_encode(['ok'=>false,'error'=>$message],JSON_UNESCAPED_UNICODE));
+            $this->Flash->error($message);
         }
         try{$batch=$service->page($this->currentUser,$season,$area,is_string($search)?$search:'',(int)$this->request->getQuery('pagina',1));}
         catch(\DomainException $e){$this->Flash->error($e->getMessage());$batch=['areas'=>$service->areas($this->currentUser,$season),'rows'=>[],'total'=>0,'pages'=>1,'page'=>1,'reference'=>null,'weeks'=>$service->weeks($season),'today'=>(new \DateTimeImmutable('now',new \DateTimeZone('America/Sao_Paulo')))->format('Y-m-d')];}

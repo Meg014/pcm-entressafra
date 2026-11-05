@@ -1,5 +1,6 @@
 'use strict';
-(() => {
+function arrangeWeeklyCurve() {
+ arrangeWeeklyCurve.cleanup?.();
  const svg=document.querySelector('#curva-semanal .curve-chart');if(!svg)return;
  const labels=[...svg.querySelectorAll('[data-point-label]')];
  const overlaps=(a,b)=>a.x<b.x+b.width+4&&a.x+a.width+4>b.x&&a.y<b.y+b.height+4&&a.y+a.height+4>b.y;
@@ -27,5 +28,27 @@
  let pending=false;const schedule=()=>{if(pending)return;pending=true;requestAnimationFrame(()=>{pending=false;arrange();});};
  schedule();window.addEventListener('resize',schedule);
  if(document.fonts&&document.fonts.ready)document.fonts.ready.then(schedule);
- if(typeof ResizeObserver!=='undefined')new ResizeObserver(schedule).observe(svg);
+ const observer=typeof ResizeObserver!=='undefined'?new ResizeObserver(schedule):null;
+ observer?.observe(svg);
+ arrangeWeeklyCurve.cleanup=()=>{window.removeEventListener('resize',schedule);observer?.disconnect();};
+}
+arrangeWeeklyCurve();
+(() => {
+ let busy=false;
+ setInterval(async()=>{
+  const current=document.getElementById('curva-semanal');
+  if(busy||document.hidden||!current||current.dataset.simulation==='true')return;
+  // Refresh just the report, preserving forms and unsaved input elsewhere.
+  busy=true;
+  try{
+   const response=await fetch(location.href,{cache:'no-store',headers:{Accept:'text/html'},signal:AbortSignal.timeout(15000)});
+   if(!response.ok||response.redirected)return;
+   const page=new DOMParser().parseFromString(await response.text(),'text/html');
+   const next=page.getElementById('curva-semanal');if(!next)return;
+   const scroll=current.querySelector('.curve-chart-scroll').scrollLeft;
+   current.replaceWith(next);next.querySelector('.curve-chart-scroll').scrollLeft=scroll;
+   arrangeWeeklyCurve();
+  }catch(_){/* Keep the last successful report; retry on the next interval. */}
+  finally{busy=false;}
+ },30000);
 })();

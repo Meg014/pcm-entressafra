@@ -159,16 +159,19 @@ final class CurvaSemanal
             $point['revisao_pendente']=false;$point['revisao_fechamento']=$snapshot?(int)$closed[$week['referencia']]['revisao_semanal']:0;
             // A live reading of accumulated entries; published snapshots remain immutable.
             $point['realizado_publicado']=$snapshot['realizado']??null;
-            if($week['referencia']<=$today){
-                $cutoff=self::date($week['fim'])->setTime(23,59,59)->setTimezone(new \DateTimeZone('UTC'))->format('Y-m-d H:i:s');
-                $roster=$snapshot['ordens']??array_values(array_filter($currentRoster,fn($order)=>$order['created']<=$cutoff));
+            if($week['inicio']<=$today){
+                // Operational history uses every O.S. currently in the sector, including
+                // imported orders with backdated entries. Closing rosters remain immutable.
+                $roster=$currentRoster;
+                $published=array_column($snapshot['ordens']??[],null,'id');
+                $reference=min($week['fim'],$today);
                 $sum=0.;foreach($roster as $order){
-                    $record=null;foreach($live->history((int)$order['id']) as $r)if($r['referencia']<=$week['fim']&&$r['created']<=$asOf)$record=$r;
+                    $record=null;foreach($live->history((int)$order['id']) as $r)if($r['referencia']<=$reference&&$r['created']<=$asOf)$record=$r;
                     $sum+=(float)($record['percentual']??0);
-                    if($snapshot&&(int)($record['id']??0)!==(int)($order['registro_id']??0))$point['revisao_pendente']=true;
+                    if($snapshot&&(!isset($published[$order['id']])||(int)($record['id']??0)!==(int)($published[$order['id']]['registro_id']??0)))$point['revisao_pendente']=true;
                 }
-                // Legacy snapshots without their composition cannot be safely recalculated.
-                if(!$snapshot||$roster){$point['quantidade']=count($roster);$point['realizado']=$roster?$sum/count($roster):null;}
+                if($snapshot&&count($published)!==count($roster))$point['revisao_pendente']=true;
+                $point['quantidade']=count($roster);$point['realizado']=$roster?$sum/count($roster):null;
                 if(!$snapshot)$point['programado_apurado']=$position['programado'];
             }
             $point['diferenca']=$point['programado_apurado']!==null&&$point['realizado']!==null?$point['realizado']-$point['programado_apurado']:null;
@@ -176,7 +179,8 @@ final class CurvaSemanal
             $point['evolucao_semanal']=$point['realizado']!==null&&isset($realized[$previous])?$point['realizado']-$realized[$previous]:null;
             if($point['realizado']!==null)$realized[$week['referencia']]=$point['realizado'];
             $points[]=$point;
-            if($week['referencia']<=$today){$latest=$point;if($snapshot)$latest['programado']=$point['programado_apurado'];else $due[]=$week;}
+            if($week['inicio']<=$today){$latest=$point;if($snapshot)$latest['programado']=$point['programado_apurado'];}
+            if($week['referencia']<=$today&&!$snapshot)$due[]=$week;
         }
         return ['points'=>self::trend($points),'latest'=>$latest,'due'=>$due,'plans'=>$plans,'targets'=>[],'base'=>0,'versions'=>$versions,'days'=>$this->operatingDays($season,$area,$latest['fim']??null),'automatic'=>ProgramacaoAutomatica::metadata($calendar,$latest['fim']??null),'programmed_graph'=>ProgramacaoAutomatica::curve($calendar,$seasonRow->data_inicio->format('Y-m-d'),$seasonRow->data_fim->format('Y-m-d')),'graph_start'=>$seasonRow->data_inicio->format('Y-m-d').'T00:00:00','graph_end'=>$seasonRow->data_fim->format('Y-m-d').'T23:59:59'];
     }

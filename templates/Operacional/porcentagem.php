@@ -15,6 +15,7 @@ $weeks=$batch['weeks'];
 <?php if($area||$search!==''): ?>
 <div class="weekly-sheet-caption"><span><?= h($batch['total']) ?> O.S. · Percentuais acumulados por semana</span><span id="porcentagens-pendentes" role="status">Nenhuma alteração pendente.</span></div>
 <p class="small text-secondary">Vazio: sem lançamento. O cálculo mantém o último acumulado anterior. Semanas de terça a segunda, com análise na terça.</p>
+<p class="small text-secondary">Salvar inclui as células alteradas de todas as páginas deste filtro. Rascunhos de outros setores ficam guardados nesta aba e reaparecem ao selecionar o setor novamente.</p>
 <p id="porcentagens-erro" role="alert"></p>
 <?= $this->Form->create(null,['id'=>'porcentagens-form','data-key'=>$key,'data-pending'=>json_encode($pending,JSON_THROW_ON_ERROR)]) ?>
 <?= $this->Form->hidden('chave',['id'=>'porcentagens-chave','value'=>$key]) ?><?= $this->Form->hidden('alteracoes_json',['id'=>'porcentagens-json','value'=>'[]']) ?>
@@ -26,7 +27,7 @@ $weeks=$batch['weeks'];
 <?php foreach($weeks as $w): $cell=$row['cells'][$w['fim']];$current=$w['inicio']<=$batch['today']&&$w['fim']>=$batch['today'];$cellKey=$row['id'].':'.$w['fim']; ?>
 <td class="weekly-cell <?= $current?'week-current':'' ?>" data-cell="<?= h($cellKey) ?>">
 <input type="number" class="form-control" min="0" max="100" step="0.01" value="<?= h($number($cell['valor'])) ?>" placeholder="—" aria-label="O.S. <?= h($row['numero']) ?> · <?= h($w['semana']) ?>ª semana · <?= h($period($w['inicio']).' a '.$period($w['fim'])) ?>" title="<?= $cell['valor']===null?'Sem lançamento; acumulado anterior considerado: '.h($number($cell['acumulado'])).'%':'Último valor salvo: '.h($number($cell['valor'])).'%' ?>" data-percentage data-id="<?= h($row['id']) ?>" data-os="<?= h($row['numero']) ?>" data-week="<?= h($w['semana']) ?>" data-reference="<?= h($w['fim']) ?>" data-base="<?= h($number($cell['valor'])) ?>" data-carry="<?= h($cell['acumulado']) ?>" data-revision="<?= h($cell['revisao']) ?>" data-record="<?= h($cell['registro_id']) ?>">
-<details class="cell-exception" hidden><summary>Correção excepcional</summary><label><input type="checkbox" data-confirm-reduction> Confirmar correção do acumulado</label><textarea data-correction-reason class="form-control" rows="2" maxlength="3000" aria-label="Justificativa da O.S. <?= h($row['numero']) ?>, semana <?= h($w['semana']) ?>" placeholder="Justificativa"></textarea></details>
+<details class="cell-exception" hidden><summary>Correção / conflito</summary><label><input type="checkbox" data-confirm-reduction> Confirmar correção do acumulado</label><textarea data-correction-reason class="form-control" rows="2" maxlength="3000" aria-label="Justificativa da O.S. <?= h($row['numero']) ?>, semana <?= h($w['semana']) ?>" placeholder="Justificativa"></textarea><p class="small">Valor carregado do banco: <?= $cell['valor']===null?'sem lançamento':h($number($cell['valor'])).'%' ?>. Em caso de conflito, recarregue para comparar com o valor atual.</p><button type="button" class="btn btn-outline-secondary btn-sm" data-use-saved>Descartar edição desta célula e usar valor carregado</button></details>
 </td><?php endforeach; ?></tr><?php endforeach; ?>
 <?php if(!$batch['rows']): ?><tr><td colspan="<?= 4+count($weeks) ?>">Nenhuma O.S. neste resultado.</td></tr><?php endif; ?>
 </tbody></table></div>

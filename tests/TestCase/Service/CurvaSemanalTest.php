@@ -65,8 +65,8 @@ class CurvaSemanalTest extends TestCase
         $this->assertSame(50,$snapshot['realizado']);$this->assertSame(3,$snapshot['quantidade']);
         Access::table('CalendariosOperacionais')->updateAll(['data_fim'=>'2026-10-26'],['area_fabrica_id'=>$this->area]);
         $report=$service->report($this->season,$this->area,new \DateTimeImmutable('2026-10-27T12:00:00-03:00'));
-        $this->assertEqualsWithDelta(69.5,$report['latest']['programado'],1e-12);
-        $this->assertSame(100.,$report['points'][1]['programado']);$this->assertEqualsWithDelta(-19.5,$report['latest']['diferenca'],1e-12);
+        $this->assertEqualsWithDelta(69.5,$report['points'][1]['programado_apurado'],1e-12);
+        $this->assertSame(100.,$report['points'][1]['programado']);$this->assertEqualsWithDelta(-19.5,$report['points'][1]['diferenca'],1e-12);
         $this->assertSame($before,Access::table('EvolucaoVersoes')->get($id)->conteudo);
     }
     public function testLegacyClosingRemainsByteForByteUnchangedAndIsIdentified(): void
@@ -75,7 +75,7 @@ class CurvaSemanalTest extends TestCase
         $content=['semana'=>2,'inicio'=>'2026-10-20','fim'=>'2026-10-26','referencia'=>'2026-10-27','programado'=>35,'realizado'=>62.5,'quantidade'=>4,'ordens'=>[],'apurado_em'=>'2026-10-27 03:00:00'];
         $row=$table->saveOrFail(Access::entity($table,['entressafra_id'=>$this->season,'area_curva_id'=>$this->area,'tipo'=>'curva_sem','nome'=>'Fechamento legado','conteudo'=>json_encode($content,JSON_THROW_ON_ERROR),'usuario_id'=>$this->admin,'created'=>'2026-10-27 03:00:00','aprovado_por'=>$this->admin,'aprovado_em'=>'2026-10-27 03:00:00','referencia_semanal'=>'2026-10-27','revisao_semanal'=>1]));
         $before=$row->conteudo;$report=(new CurvaSemanal())->report($this->season,$this->area,new \DateTimeImmutable('2026-10-27T12:00:00-03:00'));
-        $this->assertSame(35,$report['latest']['programado']);$this->assertSame(27.5,$report['latest']['diferenca']);
+        $this->assertSame(35,$report['points'][1]['programado_apurado']);$this->assertSame(27.5,$report['points'][1]['diferenca']);
         $this->assertSame('legado',$report['points'][1]['origem_programado_apurado']);
         $this->assertEqualsWithDelta(69.5,$report['points'][1]['programado'],1e-12);$this->assertSame($before,$table->get($row->id)->conteudo);
     }
@@ -88,8 +88,8 @@ class CurvaSemanalTest extends TestCase
         $service->close($this->admin,$this->season,$this->area,'2026-11-03',now:new \DateTimeImmutable('2026-11-03T12:00:00-03:00'));
         $report=$service->report($this->season,$this->area,new \DateTimeImmutable('2026-10-27T12:00:00-03:00'));
         // Revision 2 is effective in the first week, so both live positions are now 100%.
-        $this->assertSame(0.0,$report['latest']['evolucao_semanal']);$this->assertSame(100.0,$report['points'][0]['realizado']);$this->assertSame(62.5,$report['points'][0]['realizado_publicado']);$this->assertNull($report['points'][2]['realizado']);
-        $this->assertNull($report['points'][2]['tendencia']);$this->assertSame(100.,$report['points'][2]['programado']);
+        $this->assertSame(0.0,$report['latest']['evolucao_semanal']);$this->assertSame(100.0,$report['points'][0]['realizado']);$this->assertSame(62.5,$report['points'][0]['realizado_publicado']);$this->assertSame(100.,$report['points'][2]['realizado']);
+        $this->assertSame(100.,$report['points'][2]['programado']);
     }
     public function testTuesdayWeeksPartialStartAndFinalWeek(): void
     {
@@ -236,7 +236,7 @@ class CurvaSemanalTest extends TestCase
         $this->assertSame((string)$position['decorridos'],$bar->getAttribute('data-elapsed'));
         $this->assertSame((string)$position['restantes'],$bar->getAttribute('data-remaining'));
         $this->assertSame(5,$xp->query('//*[contains(@class,"curve-history")]//th')->length);
-        $this->assertResponseContains('Aguardando apuração');
+        $this->assertResponseContains('realizado dinâmico');
         if(getenv('CURVA_SEMANAL_PREVIEW'))file_put_contents(TMP.'curva-semanal-preview.html',(string)$this->_response->getBody());
         $this->get($url);$this->assertResponseOk();$this->assertResponseContains('Histórico de versões');
         $this->auth($this->pcm);$this->get($url);$this->assertResponseCode(403);$this->get('/controle-pcm?area_id='.$this->area);$this->assertResponseOk();
