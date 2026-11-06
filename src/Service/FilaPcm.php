@@ -18,7 +18,7 @@ final class FilaPcm
             $sectorWhere=' AND 1=0';
         }
         if ($number!=='') { $sectorWhere=" AND a.os_numero='".$number."'"; }
-        return "SELECT a.id,a.os_numero,a.os_filial,a.servico,a.bem,s.nome AS setor,
+        return "SELECT a.tipo_planejamento,a.id,a.os_numero,a.os_filial,a.servico,a.bem,s.nome AS setor,
             COALESCE(p.quantidade,0) AS quantidade,COALESCE(p.quantidade,0) AS apontamentos_pendentes,
             COALESCE(i.quantidade,0) AS insumos_pendentes,COALESCE(p.minutos,0) AS minutos,
             CASE WHEN p.recebido IS NULL THEN i.recebido WHEN i.recebido IS NULL THEN p.recebido
@@ -35,11 +35,12 @@ final class FilaPcm
     {
         Access::pcm($user);
         $progress=$filters['evolucao']??'';
+        $direct=trim((string)($filters['os_numero']??''))!=='';
         $rows=$this->db()->execute($this->pendingQuery($filters).' ORDER BY recebido,a.id'.($page===null||$progress!==''?'':' LIMIT 10 OFFSET '.((max(1,$page)-1)*10)))->fetchAll('assoc');
         foreach($rows as &$row)$row+=OrderProgress::status((int)$row['id']);
         unset($row);
         if ($progress!=='') {
-            $rows=array_values(array_filter($rows,static fn(array $row): bool=>match($progress) {
+            $rows=array_values(array_filter($rows,static fn(array $row): bool=>$row['percentual_atual']===null ? $direct : match($progress) {
                 'zero'=>(float)$row['percentual_atual']===0.0,
                 'andamento'=>(float)$row['percentual_atual']>0 && (float)$row['percentual_atual']<100,
                 'concluidas'=>(float)$row['percentual_atual']===100.0,

@@ -30,7 +30,7 @@ class OrganizacaoController extends OperacaoController
                 return $this->redirect(['action'=>'previa']);
             }catch(\DomainException $e){$this->Flash->error($e->getMessage());}
         }
-        $q=$this->fetchTable('Atividades')->find()->select(['id','os_numero','servico','bem','caderno_id','setor_executante_id','area_curva_id'])->where(['Atividades.entressafra_id'=>$season])->contain(['Cadernos','SetorExecutante'])->orderBy(['Atividades.os_numero'=>'ASC']);
+        $q=$this->fetchTable('Atividades')->find()->select(['id','os_numero','servico','bem','caderno_id','setor_executante_id','area_curva_id'])->where(['Atividades.tipo_planejamento'=>\App\Service\Planejamento::PROGRAMADA,'Atividades.entressafra_id'=>$season])->contain(['Cadernos','SetorExecutante'])->orderBy(['Atividades.os_numero'=>'ASC']);
         if($book)$q->where(['Atividades.caderno_id'=>$book]);
         if($this->request->getQuery('pendentes'))$q->leftJoin(['bc'=>'cadernos'],'bc.id=Atividades.caderno_id')->where(['Atividades.area_curva_id IS'=>null,'bc.area_curva_id IS'=>null]);
         $rows=$this->paginate($q,['limit'=>10,'maxLimit'=>10]);

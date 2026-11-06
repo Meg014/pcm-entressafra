@@ -41,7 +41,7 @@ final class OsSemCaderno
             $job=$this->locked($actor,$token);if($job->estado!=='consultando')return;
             $data=$this->source->page($job->cursor_os);$t=Access::table('PendenciasOrdens');
             foreach($data['rows'] as $row){
-                if($row['filial']!=='01'||!Orders::available($row)||(int)$row['identidades']!==1||!preg_match('/^[0-9]{6}$/D',$row['numero']))continue;
+                if(Planejamento::corretiva($row)||$row['filial']!=='01'||!Orders::available($row)||(int)$row['identidades']!==1||!preg_match('/^[0-9]{6}$/D',$row['numero']))continue;
                 if($t->exists(['consulta_id'=>$job->id,'numero'=>$row['numero']]))continue;
                 $t->saveOrFail(Access::entity($t,['consulta_id'=>$job->id,'numero'=>$row['numero'],'servico_codigo'=>$row['codigo_servico'],'servico_nome'=>$row['servico'],'equipe'=>$row['codigo_area'],'situacao'=>$row['situacao'],'snapshot'=>json_encode($row,JSON_THROW_ON_ERROR),'selecionada'=>false]));
             }

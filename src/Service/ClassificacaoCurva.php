@@ -16,6 +16,7 @@ final class ClassificacaoCurva
         $t=Access::table($type==='caderno'?'Cadernos':'Atividades');
         if($type==='caderno'&&count($ids)!==1)throw new \DomainException('Confira um caderno por vez.');
         $rows=$t->find()->where(['id IN'=>$ids,'entressafra_id'=>$season])->orderBy(['id'=>'ASC'])->disableHydration()->all()->toList();
+        if($type==='atividades')foreach($rows as $row)Planejamento::exigir(new \Cake\ORM\Entity($row));
         if(count($rows)!==count($ids))throw new \DomainException('Registro fora da entressafra.');
         $snapshot=[];
         foreach($rows as $row)$snapshot[]=['id'=>$row['id'],'area_curva_id'=>$row['area_curva_id'],'caderno_id'=>$row['caderno_id']??null,'modified'=>(string)($row['modified']??'')];

@@ -73,6 +73,7 @@ final class BulkLinks
     }
     private function reason(array $row,array $filters): ?string
     {
+        if (Planejamento::corretiva($row)) return 'Corretiva não programada não integra cadernos planejados.';
         if (!Orders::available($row)) { return 'O.S. não atende a L/N, origem 2026 e serviço ENTRESSAFRA inequívoco.'; }
         if (($row['codigo_area']??null)!==$filters['area'] || ($row['filial']??null)!==$filters['filial']) { return 'Área ou filial incompatível com o setor.'; }
         if (!in_array($row['codigo_servico']??null,$filters['servicos'],true)) { return 'Serviço não corresponde à seleção confirmada.'; }

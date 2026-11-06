@@ -11,7 +11,7 @@ final class Curva
     public function scope(int $season,string $area='',string $search=''): array
     {
         PeriodoContexto::season($season);
-        $where='a.entressafra_id=?';$params=[$season];
+        $where='a.entressafra_id=? AND '.Planejamento::sql();$params=[$season];
         if($area==='pendentes')$where.=' AND COALESCE(a.area_curva_id,c.area_curva_id) IS NULL';
         elseif($area!=='') {
             if(!ctype_digit($area)||(int)$area<1)throw new \DomainException('Área de apresentação inválida.');
@@ -45,7 +45,7 @@ final class Curva
         [$where,$params]=$this->scope($season,$area,$search);
         $today=(new \DateTimeImmutable('now',new \DateTimeZone('America/Sao_Paulo')))->format('Y-m-d');
         $s=Access::table('Entressafras')->get($season);$reference=min($today,$s->data_fim->format('Y-m-d'));
-        if($demo){$where='a.entressafra_id=? AND a.area_executante_totvs=?';$params=[$season,'ELETRI'];}
+        if($demo){$where='a.entressafra_id=? AND a.area_executante_totvs=? AND '.Planejamento::sql();$params=[$season,'ELETRI'];}
         $rows=$this->position($where,$params,$reference);$metrics=$this->metrics($rows);
         $page=max(1,min($page,max(1,(int)ceil($metrics['total']/10))));
         $details=$this->position($where,$params,$reference,true,$page);
@@ -66,7 +66,7 @@ final class Curva
             $metrics=$this->metrics(array_map(fn($r)=>array_replace($r,['percentual'=>40]),$rows));
             $official=null;$programado=null;$weight=null;$hasHistory=(bool)$rows;
         }
-        $pending=(int)$this->db()->execute('SELECT COUNT(*) AS n FROM atividades a LEFT JOIN cadernos c ON c.id=a.caderno_id WHERE a.entressafra_id=? AND COALESCE(a.area_curva_id,c.area_curva_id) IS NULL',[$season])->fetch('assoc')['n'];
+        $pending=(int)$this->db()->execute('SELECT COUNT(*) AS n FROM atividades a LEFT JOIN cadernos c ON c.id=a.caderno_id WHERE a.entressafra_id=? AND '.Planejamento::sql().' AND COALESCE(a.area_curva_id,c.area_curva_id) IS NULL',[$season])->fetch('assoc')['n'];
         return compact('metrics','details','points','official','programado','weight','reference','page','pending','demo','hasHistory')+['pages'=>max(1,(int)ceil($metrics['total']/10))];
     }
     public function historyPage(int $activity,int $page=1): array

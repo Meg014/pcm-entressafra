@@ -7,13 +7,14 @@ final class OperacaoRapida
     public function activity($user,int $id,bool $progress=false)
     {
         $a=Access::table('Atividades')->get($id,contain:['Entressafras','SetorExecutante','Cadernos'=>['Entressafras']]);Access::activity($user,$a);
-        if($a->setor_executante_id===null || (PeriodoContexto::id()===null?$a->entressafra->status!=='ativa':$a->entressafra->status==='encerrada')) { throw new \DomainException('Selecione uma O.S. identificada na entressafra ativa e em um setor autorizado.'); }
+        if(($a->setor_executante_id===null && $a->tipo_planejamento!==Planejamento::CORRETIVA) || (PeriodoContexto::id()===null?$a->entressafra->status!=='ativa':$a->entressafra->status==='encerrada')) { throw new \DomainException('Selecione uma O.S. identificada na entressafra ativa e em um setor autorizado.'); }
         if(!$progress && $a->disponivel_totvs!==true) { throw new \DomainException('O.S. indisponível para novos apontamentos. Solicite conferência ao PCM.'); }
         return $a;
     }
     public function result($a,bool $progress=false,array $source=[]): array
     {
-        $out=['id'=>(string)$a->id,'numero'=>$a->os_numero,'filial'=>$a->os_filial,'servico'=>$a->servico,'bem'=>$a->bem,'situacao'=>$a->situacao_totvs,'setor'=>$a->setor_executante?->nome??'Pendente','caderno'=>($a->caderno?->nome??'Sem caderno (opcional)'),'entressafra'=>$a->entressafra->nome,'entressafra_id'=>(int)$a->entressafra_id,'descricao_caderno'=>$a->caderno?->descricao??'','selecionavel'=>true,'codigo_area'=>$a->area_executante_totvs,'centro_custo'=>''];
+        if($progress)Planejamento::exigir($a);
+        $out=['tipo_planejamento'=>$a->tipo_planejamento,'id'=>(string)$a->id,'numero'=>$a->os_numero,'filial'=>$a->os_filial,'servico'=>$a->servico,'bem'=>$a->bem,'situacao'=>$a->situacao_totvs,'setor'=>$a->setor_executante?->nome??'Pendente','caderno'=>($a->caderno?->nome??'Sem caderno (opcional)'),'entressafra'=>$a->entressafra->nome,'entressafra_id'=>(int)$a->entressafra_id,'descricao_caderno'=>$a->caderno?->descricao??'','selecionavel'=>true,'codigo_area'=>$a->area_executante_totvs,'centro_custo'=>''];
         if($progress) { [$reference,$week]=$this->reference((int)$a->entressafra_id,null,(int)$a->id);$state=(new Evolucao())->state((int)$a->id,$reference);$out+=['referencia'=>$reference,'calendario_confirmado'=>$week!==null,'anterior'=>$state['anterior'],'percentual'=>$state['percentual'],'revisao'=>$state['revisao'],'referencias'=>array_column((new Evolucao())->calendar((int)$a->entressafra_id),'referencia')]; }
         if(!$progress)$out+=OrderProgress::status((int)$a->id);
         $presentation=OsApresentacao::activity($a,$source);
@@ -46,14 +47,22 @@ final class OperacaoRapida
             if(!$sector->area_totvs)continue;
             foreach($gateway->orders($term,$sector->area_totvs,'01') as $r){
                 if(!\App\Integration\Totvs\Orders::available($r)||$r['filial']!=='01'||$r['codigo_area']!==$sector->area_totvs)continue;
+                if($progress&&Planejamento::corretiva($r))continue;
                 $old=Access::table('Atividades')->find()->where(['entressafra_id'=>$season->id,'os_numero'=>$r['numero'],'os_filial'=>'01'])->first();
-                if($old){$a=$this->activity($user,(int)$old->id,true);$out=$this->result($a,$progress,$r);$out['selecionavel']=(int)$old->setor_executante_id===(int)$sector->id&&$old->area_executante_totvs===$r['codigo_area'];}
+                if($progress&&$old?->tipo_planejamento===Planejamento::CORRETIVA)continue; if($old){$a=$this->activity($user,(int)$old->id,true);$out=$this->result($a,$progress,$r);$out['selecionavel']=(int)$old->setor_executante_id===(int)$sector->id&&$old->area_executante_totvs===$r['codigo_area'];}
                 else{$out=['id'=>null,'selecionavel'=>true,'numero'=>$r['numero'],'filial'=>'01','servico'=>$r['servico'],'bem'=>$r['bem'],'setor'=>$sector->nome,'caderno'=>'Sem caderno (opcional)','situacao'=>$r['situacao'],'codigo_area'=>$r['codigo_area'],'centro_custo'=>$r['centro_custo']??''];}
-                $out+=OsApresentacao::source($r,$sector->nome);
+                $out+=['tipo_planejamento'=>Planejamento::corretiva($r)?Planejamento::CORRETIVA:Planejamento::PROGRAMADA];$out+=OsApresentacao::source($r,$sector->nome);
                 $out['os_chave']=$r['chave'];$out['confirmar_origem']=true;$results[$r['chave']]=$out;
             }
         }
-        if($progress){foreach(Access::activityScope(Access::table('Atividades')->find()->contain(['Entressafras','SetorExecutante','Cadernos']),$user)->where(['Atividades.entressafra_id'=>$season->id,'Atividades.disponivel_totvs'=>false,'OR'=>['os_numero LIKE'=>'%'.$term.'%','servico LIKE'=>'%'.$term.'%']])->limit(20)->all() as $a){$results[$a->os_chave]=$this->result($a,true);}}
+        // Unmapped corrective orders stay available to PCM without expanding sector permissions.
+        if (!$progress && in_array($user->perfil,['PCM','ADMIN_PCM'],true)) {
+            foreach ($gateway->orders($term,'','01') as $r) {
+                if (!Planejamento::corretiva($r) || !\App\Integration\Totvs\Orders::available($r) || $r['filial']!=='01' || isset($results[$r['chave']])) continue;
+                $results[$r['chave']]=['id'=>null,'selecionavel'=>true,'numero'=>$r['numero'],'filial'=>$r['filial'],'servico'=>$r['servico'],'bem'=>$r['bem'],'situacao'=>$r['situacao'],'codigo_area'=>$r['codigo_area'],'tipo_planejamento'=>Planejamento::CORRETIVA,'os_chave'=>$r['chave'],'confirmar_origem'=>true,'setor'=>'Pendente de conferência pelo PCM','caderno'=>'Sem caderno']+OsApresentacao::source($r,'Pendente de conferência pelo PCM');
+            }
+        }
+        if($progress){foreach(Access::activityScope(Access::table('Atividades')->find()->contain(['Entressafras','SetorExecutante','Cadernos']),$user)->where(['Atividades.entressafra_id'=>$season->id,'Atividades.tipo_planejamento'=>Planejamento::PROGRAMADA,'Atividades.disponivel_totvs'=>false,'OR'=>['os_numero LIKE'=>'%'.$term.'%','servico LIKE'=>'%'.$term.'%']])->limit(20)->all() as $a){$results[$a->os_chave]=$this->result($a,true);}}
         return ['results'=>array_slice(array_values($results),0,20),'has_more'=>count($results)>20,'message'=>'Nenhuma O.S. elegível nas áreas executantes autorizadas.'];
     }
 }

@@ -5,7 +5,7 @@
   const list = document.getElementById('os-resultados'), message = document.getElementById('os-aviso'), summary = document.getElementById('os-resumo');
   const filters = ['entressafra_id', 'setor_id', 'caderno_id'];
   let timer, controller, version = 0, active = -1;
-  const identification = order => `O.S. ${order.numero}\nDescrição: ${order.descricao || 'Descrição não informada'}\n${order.rotulo_setor || 'Setor'}: ${order.setor_apresentacao || 'Não definido'}`;
+  const identification = order => `O.S. ${order.numero}${order.tipo_planejamento === 'CORRETIVA_NAO_PROGRAMADA' ? ' — Corretiva não programada' : ''}\nDescrição: ${order.descricao || 'Descrição não informada'}\n${order.rotulo_setor || 'Setor'}: ${order.setor_apresentacao || 'Não definido'}`;
   const close = () => {
     list.hidden = true; input.setAttribute('aria-expanded', 'false'); input.removeAttribute('aria-activedescendant'); active = -1;
   };

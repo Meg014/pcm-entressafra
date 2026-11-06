@@ -16,13 +16,13 @@ final class EvolucaoSemanal
     {
         PeriodoContexto::season($season);$areas=Access::table('AreasFabrica')->find('list')->where(['entressafra_id'=>$season])->orderBy(['nome'=>'ASC'])->all()->toArray();
         if($user->perfil!=='RESPONSAVEL_SETOR'||Access::operational($user))return $areas;
-        $visible=[];foreach(Access::activityScope(Access::table('Atividades')->find()->contain(['Cadernos']),$user)->where(['Atividades.entressafra_id'=>$season])->all() as $a){$visible[(int)($a->area_curva_id??$a->caderno?->area_curva_id)]=true;}
+        $visible=[];foreach(Access::activityScope(Access::table('Atividades')->find()->contain(['Cadernos']),$user)->where(['Atividades.tipo_planejamento'=>Planejamento::PROGRAMADA,'Atividades.entressafra_id'=>$season])->all() as $a){$visible[(int)($a->area_curva_id??$a->caderno?->area_curva_id)]=true;}
         return array_intersect_key($areas,$visible);
     }
     private function scope($user,int $season,int $area)
     {
         $areas=$area?[$area]:array_keys($this->areas($user,$season));
-        return Access::activityScope(Access::table('Atividades')->find()->leftJoinWith('Cadernos'),$user)->where(['Atividades.entressafra_id'=>$season,'COALESCE(Atividades.area_curva_id,Cadernos.area_curva_id) IN'=>$areas?:[-1]],['COALESCE(Atividades.area_curva_id,Cadernos.area_curva_id)'=>'integer']);
+        return Access::activityScope(Access::table('Atividades')->find()->leftJoinWith('Cadernos'),$user)->where(['Atividades.tipo_planejamento'=>Planejamento::PROGRAMADA,'Atividades.entressafra_id'=>$season,'COALESCE(Atividades.area_curva_id,Cadernos.area_curva_id) IN'=>$areas?:[-1]],['COALESCE(Atividades.area_curva_id,Cadernos.area_curva_id)'=>'integer']);
     }
     /** Exact cell only; absent entries stay NULL while carry-forward is handled by Evolucao::state. */
     public static function cell(array $history,array $week): ?array

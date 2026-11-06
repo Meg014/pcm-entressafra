@@ -5,7 +5,7 @@ $status=static fn($row):string=>$row->cancelado?'Cancelado':($row->controle_pcm=
 $quantity=static fn($value):string=>str_replace('.',',',str_contains((string)$value,'.')?rtrim(rtrim((string)$value,'0'),'.'):(string)$value);
 ?>
 <div class="page-heading mb-3"><h1>O.S. <?= h($activity->os_numero) ?> — <?= h($presentation['setor_apresentacao']) ?></h1><?= $this->Html->link('Voltar à fila',['action'=>'index','?'=>array_intersect_key($this->request->getQueryParams(),array_flip(['os_numero','setor','evolucao','pagina']))],['class'=>'btn btn-light']) ?></div>
-<section class="panel mb-4"><div><strong>Descrição da atividade:</strong> <?= h($presentation['descricao']) ?></div><div><strong>Equipamento:</strong> <?= h($activity->bem) ?></div><div><strong>Percentual atual de evolução:</strong> <?= h($completion['percentual_atual']) ?>%</div></section>
+<section class="panel mb-4"><div><strong>Descrição da atividade:</strong> <?= h($presentation['descricao']) ?></div><div><strong>Equipamento:</strong> <?= h($activity->bem) ?></div><div><strong>Percentual atual de evolução:</strong> <?= $completion['percentual_atual']===null?'— (Corretiva não programada)':h($completion['percentual_atual']).'%' ?></div></section>
 <?= $this->element('cancel_entry_confirmation') ?>
 <section class="panel mb-4" id="horas"><h2>Apontamentos de horas</h2>
 <?php if($rows->count()): ?>

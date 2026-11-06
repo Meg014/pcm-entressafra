@@ -14,8 +14,8 @@ final class Insumos
         if(!is_scalar($id)||!ctype_digit((string)$id)||(int)$id<1||!Access::table('Atividades')->exists(['id'=>(int)$id]))throw new \DomainException('Selecione uma O.S. válida.');
         $activity=(new OperacaoRapida())->activity($user,(int)$id);
         PeriodoContexto::writable((int)$activity->entressafra_id);
-        $sector=Access::table('Setores')->get($activity->setor_executante_id);
-        if($activity->identificacao_setor!=='area_totvs'||!$sector->ativo||$sector->area_totvs!==$activity->area_executante_totvs||$sector->filial_totvs!==$activity->os_filial)throw new \DomainException('Mapeamento do setor executante pendente ou divergente. Solicite conferência ao PCM.');
+        $sector=$activity->setor_executante_id?Access::table('Setores')->get($activity->setor_executante_id):null;
+        if((!$sector&&$activity->tipo_planejamento!==Planejamento::CORRETIVA)||($sector&&($activity->identificacao_setor!=='area_totvs'||!$sector->ativo||$sector->area_totvs!==$activity->area_executante_totvs||$sector->filial_totvs!==$activity->os_filial)))throw new \DomainException('Mapeamento do setor executante pendente ou divergente. Solicite conferência ao PCM.');
         $source=$this->gateway->order($activity->os_chave);
         if(!\App\Integration\Totvs\Orders::available($source)||($source['numero']??null)!==$activity->os_numero||($source['filial']??null)!==$activity->os_filial||($source['codigo_area']??null)!==$activity->area_executante_totvs)throw new \DomainException('O.S. indisponível ou divergente no TOTVS.');
         $rows=$input['insumos']??null;

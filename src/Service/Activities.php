@@ -42,6 +42,7 @@ final class Activities
         if (!$caderno->ativo) { throw new \DomainException('O caderno está inativo.'); }
         $row = $this->totvs->order($key);
         if ($validate) { $validate($row); }
+        if (Planejamento::corretiva($row)) throw new \DomainException('Corretiva não programada não integra cadernos planejados. Use Novo apontamento ou Insumos.');
         foreach (['chave', 'numero', 'filial', 'servico', 'bem', 'situacao'] as $field) {
             if (!isset($row[$field]) || !is_string($row[$field]) || (!in_array($field,['filial','bem'],true) && trim($row[$field]) === '')) { throw new \DomainException('Identificação da O.S. incompleta ou ambígua no TOTVS.'); }
         }
@@ -86,7 +87,7 @@ final class Activities
                 $activity->setor_executante_id=$sector->id; $activity->area_executante_totvs=$row['codigo_area']; $activity->identificacao_setor='area_totvs';
             }
             $sameSector=$sector && (int)$activity->setor_executante_id===(int)$sector->id;
-            $activity->snapshot_totvs=json_encode($snapshot,JSON_THROW_ON_ERROR); $activity->situacao_totvs=$row['situacao']; $activity->disponivel_totvs=$sameArea && $sameSector && \App\Integration\Totvs\Orders::available($row); $activity->modified=gmdate('Y-m-d H:i:s');
+            $activity->snapshot_totvs=json_encode($snapshot,JSON_THROW_ON_ERROR); $activity->situacao_totvs=$row['situacao']; $activity->disponivel_totvs=$sameArea && ($sameSector || ($activity->tipo_planejamento===Planejamento::CORRETIVA && $activity->setor_executante_id===null)) && \App\Integration\Totvs\Orders::available($row); $activity->modified=gmdate('Y-m-d H:i:s');
             $table->saveOrFail($activity);
             Access::audit($user,'sincronizacao_os',null,$before,$activity->toArray(), 'Consulta somente leitura da situação no TOTVS. Sem alteração de avanço físico.');
         });
@@ -95,7 +96,7 @@ final class Activities
     {
         $u=Access::actor($userId);$row=$this->totvs->order($key);
         if(($row['chave']??null)!==$key||($row['filial']??'')!=='01'||!\App\Integration\Totvs\Orders::available($row)||($row['disponivel']??false)!==true)throw new \DomainException('O.S. inelegível ou ambígua no TOTVS.');
-        $sectors=Access::table('Setores')->find()->where(['area_totvs'=>$row['codigo_area'],'filial_totvs'=>'01','ativo'=>true])->all();if($sectors->count()!==1)throw new \DomainException('Área executante sem mapeamento inequívoco.');$sector=$sectors->first();Access::sector($u,(int)$sector->id);
+        $sectors=Access::table('Setores')->find()->where(['area_totvs'=>$row['codigo_area'],'filial_totvs'=>'01','ativo'=>true])->all();if($sectors->count()!==1&&!Planejamento::corretiva($row))throw new \DomainException('Área executante sem mapeamento inequívoco.');$sector=$sectors->count()===1?$sectors->first():null;if($sector)Access::sector($u,(int)$sector->id);else Access::pcm($u);
         $seasons=Access::table('Entressafras')->find()->where(PeriodoContexto::id()!==null?['id'=>PeriodoContexto::id()]:['status'=>'ativa'])->all();if($seasons->count()!==1)throw new \DomainException('Configure exatamente uma entressafra ativa para identificar a O.S.');$season=$seasons->first();PeriodoContexto::writable((int)$season->id);$t=Access::table('Atividades');
         return $t->getConnection()->transactional(function()use($u,$row,$sector,$season,$t){
             if($t->getConnection()->getDriver() instanceof \Cake\Database\Driver\Postgres){
@@ -104,8 +105,8 @@ final class Activities
             }
             PeriodoContexto::writable((int)$season->id);
             $old=$t->find()->where(['entressafra_id'=>$season->id,'os_numero'=>$row['numero'],'os_filial'=>'01'])->first();
-            if($old){if((int)$old->setor_executante_id!==(int)$sector->id||$old->area_executante_totvs!==$row['codigo_area'])throw new \DomainException('Área executante divergente do registro local. Solicite conferência ao PCM.');if($old->disponivel_totvs!==true){$before=$old->toArray();$old->disponivel_totvs=true;$old->situacao_totvs=$row['situacao'];$t->saveOrFail($old);Access::audit($u,'revalidacao_os',null,$before,$old->toArray(),'Situação aberta revalidada por SELECT no TOTVS.');}return (int)$old->id;}
-            $now=gmdate('Y-m-d H:i:s');$a=$t->saveOrFail(Access::entity($t,['entressafra_id'=>$season->id,'caderno_id'=>null,'setor_executante_id'=>$sector->id,'area_executante_totvs'=>$row['codigo_area'],'identificacao_setor'=>'area_totvs','os_chave'=>$row['chave'],'os_numero'=>$row['numero'],'os_filial'=>'01','servico'=>$row['servico'],'bem'=>$row['bem'],'situacao_totvs'=>$row['situacao'],'disponivel_totvs'=>true,'snapshot_totvs'=>json_encode($row,JSON_THROW_ON_ERROR),'criado_por'=>$u->id,'created'=>$now,'modified'=>$now]));Access::audit($u,'identificacao_os',null,null,['atividade_id'=>$a->id,'entressafra_id'=>$season->id,'setor_id'=>$sector->id],null);return (int)$a->id;
+            if($old){if((int)$old->setor_executante_id!==(int)$sector?->id||$old->area_executante_totvs!==$row['codigo_area'])throw new \DomainException('Área executante divergente do registro local. Solicite conferência ao PCM.');if($old->disponivel_totvs!==true){$before=$old->toArray();$old->disponivel_totvs=true;$old->situacao_totvs=$row['situacao'];$t->saveOrFail($old);Access::audit($u,'revalidacao_os',null,$before,$old->toArray(),'Situação aberta revalidada por SELECT no TOTVS.');}return (int)$old->id;}
+            $now=gmdate('Y-m-d H:i:s');$a=$t->saveOrFail(Access::entity($t,['tipo_planejamento'=>Planejamento::corretiva($row)?Planejamento::CORRETIVA:Planejamento::PROGRAMADA,'entressafra_id'=>$season->id,'caderno_id'=>null,'setor_executante_id'=>$sector?->id,'area_executante_totvs'=>$row['codigo_area'],'identificacao_setor'=>$sector?'area_totvs':'pendente','os_chave'=>$row['chave'],'os_numero'=>$row['numero'],'os_filial'=>'01','servico'=>$row['servico'],'bem'=>$row['bem'],'situacao_totvs'=>$row['situacao'],'disponivel_totvs'=>true,'snapshot_totvs'=>json_encode($row,JSON_THROW_ON_ERROR),'criado_por'=>$u->id,'created'=>$now,'modified'=>$now]));Access::audit($u,'identificacao_os',null,null,['atividade_id'=>$a->id,'entressafra_id'=>$season->id,'setor_id'=>$sector?->id],null);return (int)$a->id;
         });
     }
     public function classify(int $userId,int $id,int $bookId): int
@@ -113,7 +114,7 @@ final class Activities
         $u=Access::actor($userId);Access::pcm($u);$t=Access::table('Atividades');
         return $t->getConnection()->transactional(function()use($u,$t,$id,$bookId){
             if($t->getConnection()->getDriver() instanceof \Cake\Database\Driver\Postgres)$t->getConnection()->execute('SELECT id FROM atividades WHERE id=? FOR UPDATE',[$id]);
-            $a=$t->get($id);$b=Access::table('Cadernos')->get($bookId);
+            $a=$t->get($id);Planejamento::exigir($a);$b=Access::table('Cadernos')->get($bookId);
             if($a->caderno_id!==null)throw new \DomainException('A O.S. já tem caderno; não será transferida automaticamente.');
             if(!$b->ativo||(int)$b->entressafra_id!==(int)$a->entressafra_id||!in_array((int)$a->setor_executante_id,Access::notebookSectors($bookId),true))throw new \DomainException('Caderno incompatível com entressafra ou setor executante.');
             $before=$a->toArray();$a->caderno_id=$bookId;$t->saveOrFail($a);Access::audit($u,'classificacao_caderno',null,$before,$a->toArray(),'Classificação administrativa posterior; históricos preservados.');return $id;

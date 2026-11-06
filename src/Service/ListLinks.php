@@ -29,7 +29,7 @@ final class ListLinks
         $sectors=Access::table('Setores')->find()->where(['area_totvs'=>$row['codigo_area'],'filial_totvs'=>'01'])->all();
         $automatic=$sectors->count()===0&&preg_match('/^[A-Za-z0-9_-]{1,6}$/D',(string)$row['codigo_area']);
         $state='elegivel';$reason=null;
-        if((int)($row['identidades']??0)!==1||(int)$row['correspondencias_servico']>1){$state='ambigua';$reason='Número/filial ou serviço ambíguo no TOTVS.';}
+        if(Planejamento::corretiva($row)||$old?->tipo_planejamento===Planejamento::CORRETIVA){$state='inelegivel';$reason='Corretiva não programada: disponível para horas e insumos, sem caderno planejado.';} elseif((int)($row['identidades']??0)!==1||(int)$row['correspondencias_servico']>1){$state='ambigua';$reason='Número/filial ou serviço ambíguo no TOTVS.';}
         elseif($row['filial']!=='01'||!Orders::available($row)){$state='inelegivel';$reason='Exige filial 01, L/N, origem 2026 e serviço ENTRESSAFRA inequívoco.';}
         elseif(!$automatic&&($sectors->count()!==1||!$sectors->first()->ativo)){$state='ambigua';$reason='Área executante sem identificação única e ativa.';}
         elseif($old&&($automatic||(int)$old->setor_executante_id!==(int)$sectors->first()->id||$old->area_executante_totvs!==$row['codigo_area'])){$state='ambigua';$reason='Equipe executante diverge do registro local; histórico preservado.';}

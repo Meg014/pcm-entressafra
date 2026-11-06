@@ -22,7 +22,7 @@ final class Orders
     public static function available(array $row): bool
     {
         $date=(string)($row['data_origem']??'');
-        return ($row['situacao']??'')==='L' && ($row['termino']??'')==='N' && preg_match('/^[0-9]{8}$/D',$date) && $date>='20260101' && $date<='20261231' && checkdate((int)substr($date,4,2),(int)substr($date,6,2),(int)substr($date,0,4)) && (int)($row['correspondencias_servico']??0)===1 && str_contains(mb_strtoupper((string)($row['servico']??''),'UTF-8'),'ENTRESSAFRA');
+        return ($row['situacao']??'')==='L' && ($row['termino']??'')==='N' && preg_match('/^[0-9]{8}$/D',$date) && $date>='20260101' && $date<='20261231' && checkdate((int)substr($date,4,2),(int)substr($date,6,2),(int)substr($date,0,4)) && (int)($row['correspondencias_servico']??0)===1 && (str_contains(mb_strtoupper((string)($row['servico']??''),'UTF-8'),'ENTRESSAFRA') || \App\Service\Planejamento::corretiva($row));
     }
     public static function mapRow(array $row): array
     {
@@ -30,6 +30,7 @@ final class Orders
         $row['descricao_totvs']=mb_check_encoding($description,'UTF-8')?$description:mb_convert_encoding($description,'UTF-8','Windows-1252');
         foreach(['numero','filial','codigo_servico','codigo_area','centro_custo','data_origem','situacao','termino','bem'] as $field) { if(!array_key_exists($field,$row)) { throw new \DomainException('Resposta incompleta da O.S. no TOTVS.'); } $row[$field]=rtrim((string)$row[$field],' '); }
         $row['servico']=rtrim((string)($row['servico']??''),' ');
+        if (!mb_check_encoding($row['servico'],'UTF-8')) $row['servico']=mb_convert_encoding($row['servico'],'UTF-8','Windows-1252');
         $row['correspondencias_servico']=(int)($row['correspondencias_servico']??0);
         $row['chave']=self::key($row['filial'],$row['numero']); self::decode($row['chave']);
         $row['disponivel']=self::available($row); $row['origem']='DADOSP12.dbo.STJ010';

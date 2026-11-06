@@ -11,13 +11,13 @@ final class PorcentagensLote
         $areas=$area?[$area]:array_keys($this->areas($user,$season));
         return Access::activityScope(Access::table('Atividades')->find(),$user)
             ->innerJoinWith('Cadernos',fn($q)=>$q->where(['Cadernos.entressafra_id'=>$season,'Cadernos.area_curva_id IN'=>$areas?:[-1]]))
-            ->where(['Atividades.entressafra_id'=>$season]);
+            ->where(['Atividades.tipo_planejamento'=>Planejamento::PROGRAMADA,'Atividades.entressafra_id'=>$season]);
     }
     public function areas($user,int $season): array
     {
         $q=Access::table('AreasFabrica')->find('list')->where(['entressafra_id'=>$season])->orderBy(['nome'=>'ASC']);
         if($user->perfil==='RESPONSAVEL_SETOR'){
-            $books=Access::activityScope(Access::table('Atividades')->find(),$user)->select(['caderno_id'])->where(['Atividades.entressafra_id'=>$season,'caderno_id IS NOT'=>null]);
+            $books=Access::activityScope(Access::table('Atividades')->find(),$user)->select(['caderno_id'])->where(['Atividades.tipo_planejamento'=>Planejamento::PROGRAMADA,'Atividades.entressafra_id'=>$season,'caderno_id IS NOT'=>null]);
             $ids=Access::table('Cadernos')->find()->select(['area_curva_id'])->where(['id IN'=>$books,'area_curva_id IS NOT'=>null]);$q->where(['id IN'=>$ids]);
         }
         return $q->all()->toArray();

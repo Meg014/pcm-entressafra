@@ -63,7 +63,7 @@ final class Evolucao
     public function activities(int $season): array
     {
         PeriodoContexto::season($season);
-        return $this->db()->execute("SELECT a.*,COALESCE(c.nome,'Sem caderno') AS caderno_nome,s.nome AS setor_nome FROM atividades a LEFT JOIN cadernos c ON c.id=a.caderno_id LEFT JOIN setores s ON s.id=a.setor_executante_id WHERE a.entressafra_id=? ORDER BY a.os_numero,a.id",[$season])->fetchAll('assoc');
+        return $this->db()->execute("SELECT a.*,COALESCE(c.nome,'Sem caderno') AS caderno_nome,s.nome AS setor_nome FROM atividades a LEFT JOIN cadernos c ON c.id=a.caderno_id LEFT JOIN setores s ON s.id=a.setor_executante_id WHERE a.entressafra_id=? AND ".Planejamento::sql()." ORDER BY a.os_numero,a.id",[$season])->fetchAll('assoc');
     }
     public function history(int $activity): array
     {
@@ -105,7 +105,7 @@ final class Evolucao
             foreach ($rows as $row) {
                 $id=filter_var($row['atividade_id']??null,FILTER_VALIDATE_INT);
                 if (!$id || isset($seen[$id])) { throw new \DomainException('Atividade inválida ou repetida no lote.'); } $seen[$id]=true;
-                $a=Access::table('Atividades')->get($id); Access::activity($u,$a);
+                $a=Access::table('Atividades')->get($id); Access::activity($u,$a); Planejamento::exigir($a);
                 if ((int)$a->entressafra_id!==$season || $a->setor_executante_id===null) { throw new \DomainException('Atividade fora da entressafra ou setor pendente.'); }
                 $state=$this->state($id,$reference); $value=self::number($row['percentual']??null);
                 if (!array_key_exists('revisao',$row) || (string)$row['revisao']!==(string)$state['revisao']) { throw new \DomainException('Outra pessoa alterou esta O.S. Atualize a tela antes de salvar.'); }
@@ -182,6 +182,7 @@ final class Evolucao
     public function report(int $season,array $activities,string $reference,?int $weightId=null,?int $planId=null,?string $asOf=null): array
     {
         PeriodoContexto::season($season);
+        $activities=array_values(array_filter($activities,fn($a)=>($a['tipo_planejamento']??Planejamento::PROGRAMADA)===Planejamento::PROGRAMADA));
         if ($asOf!==null) { $activities=array_values(array_filter($activities,fn($a)=>$a['created']<=$asOf)); }
         $this->loadHistory($season);
         $choose=function(string $type,?int $id) use($season,$asOf): ?array {

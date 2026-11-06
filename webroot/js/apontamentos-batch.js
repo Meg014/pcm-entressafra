@@ -4,7 +4,7 @@
  const orderStatus=document.getElementById('entry-order-status');
  const setOrder=order=>{
   orderStatus.hidden=!order;
-  orderStatus.textContent=order?'Percentual atual da O.S.: '+Number(order.percentual_atual??0).toLocaleString('pt-BR')+'%':'';
+  orderStatus.textContent=order?.tipo_planejamento==='CORRETIVA_NAO_PROGRAMADA'?'Corretiva não programada':order?'Percentual atual da O.S.: '+Number(order.percentual_atual??0).toLocaleString('pt-BR')+'%':'';
  };
  document.getElementById('os-autocomplete').addEventListener('pcm-entry-order',event=>setOrder(event.detail));
  setOrder(JSON.parse(orderStatus.dataset.order||'null'));

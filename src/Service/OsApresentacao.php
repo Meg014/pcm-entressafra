@@ -36,12 +36,12 @@ final class OsApresentacao
         $description=self::description($activity->descricao_atividade,$source+$snapshot);
         if($book){
             $sector=$book->area_curva_id?Access::table('AreasFabrica')->get($book->area_curva_id)->nome:'Não definido';
-            return ['descricao'=>$description,'setor_apresentacao'=>$sector,'rotulo_setor'=>'Setor'];
+            return ['tipo_planejamento'=>$activity->tipo_planejamento,'descricao'=>$description,'setor_apresentacao'=>$sector,'rotulo_setor'=>'Setor'];
         }
         $executor=$activity->setor_executante;
         $team=is_array($executor)?($executor['nome']??null):($executor?->nome??null);
         if(!$team&&$activity->setor_executante_id)$team=Access::table('Setores')->get($activity->setor_executante_id)->nome;
-        return ['descricao'=>$description,'setor_apresentacao'=>self::equipe($team?:$activity->area_executante_totvs),'rotulo_setor'=>'Equipe executante (sem caderno)'];
+        return ['tipo_planejamento'=>$activity->tipo_planejamento,'descricao'=>$description,'setor_apresentacao'=>self::equipe($team?:($activity->tipo_planejamento===Planejamento::CORRETIVA?'Pendente de conferência pelo PCM':$activity->area_executante_totvs)),'rotulo_setor'=>'Equipe executante (sem caderno)'];
     }
     public static function source(array $row,?string $team=null): array
     {

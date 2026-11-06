@@ -29,7 +29,7 @@ final class CurvaSemanal
         PeriodoContexto::season($season);
         $areas=(new SetoresApresentacao())->availableAreas($season)->find('list')->all()->toArray();
         // Include already classified legacy sectors, without changing their registrations.
-        $rows=$this->db()->execute('SELECT DISTINCT ar.id,ar.nome FROM atividades a LEFT JOIN cadernos c ON c.id=a.caderno_id JOIN areas_fabrica ar ON ar.id=COALESCE(a.area_curva_id,c.area_curva_id) WHERE a.entressafra_id=?',[$season])->fetchAll('assoc');
+        $rows=$this->db()->execute('SELECT DISTINCT ar.id,ar.nome FROM atividades a LEFT JOIN cadernos c ON c.id=a.caderno_id JOIN areas_fabrica ar ON ar.id=COALESCE(a.area_curva_id,c.area_curva_id) WHERE a.entressafra_id=? AND '.Planejamento::sql(),[$season])->fetchAll('assoc');
         foreach ($rows as $row) { $areas[$row['id']]=$row['nome']; }
         asort($areas,SORT_NATURAL|SORT_FLAG_CASE);return $areas;
     }

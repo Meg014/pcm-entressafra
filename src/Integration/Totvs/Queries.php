@@ -3,6 +3,7 @@ declare(strict_types=1);
 namespace App\Integration\Totvs;
 final class Queries
 {
+    public const CORRECTIVE_SERVICES = "SELECT RTRIM(T4_FILIAL) AS filial, RTRIM(T4_SERVICO) AS codigo, RTRIM(T4_NOME) AS nome FROM DADOSP12.dbo.ST4010 WHERE D_E_L_E_T_ <> '*' AND T4_SERVICO IN ('CNPECA','CNPECD','CNPEDT','CNPEEL','CNPETR','CNPEIN','CNPELB','CNPEMC','CNPEMO') ORDER BY T4_SERVICO,T4_FILIAL";
     public const ORDER_NOTES = "SELECT TOP (2) RTRIM(TJ_ORDEM) AS numero, RTRIM(TJ_FILIAL) AS filial, CONVERT(varchar(max), TJ_OBSERVA) AS observacoes FROM DADOSP12.dbo.STJ010 WHERE D_E_L_E_T_ <> '*' AND TJ_ORDEM = :numero AND TJ_FILIAL = :filial";
     // Escopo confirmado pelo usuário: exclusivamente a família 010.
     public const SOURCE_TABLES = ['STJ010', 'ST4010', 'ST9010', 'SRA010', 'ST1010', 'CTT010'];
@@ -50,6 +51,7 @@ SQL;
     }
     public static function allows(string $sql): bool
     {
+        if ($sql === self::CORRECTIVE_SERVICES) { return true; }
         if($sql===PendingOrders::sql()) { return true; }
         if($sql===self::ORDER_NOTES) { return true; }
         if($sql===ListOrderQueries::numbers()) { return true; }

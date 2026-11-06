@@ -9,7 +9,7 @@ class AtividadesController extends OperacaoController
         $query = $this->activitiesQuery(); $this->filters($query, 'Atividades');
         $rows=$this->paginate($query->orderBy(['Atividades.id' => 'DESC']), ['limit' => 10, 'maxLimit' => 10]);$ids=array_map(fn($a)=>(int)$a->id,$rows->items()->toList());
         $metrics=(new \App\Service\FilaPcm())->metrics($ids);$progress=[];$today=(new \DateTimeImmutable('now',new \DateTimeZone('America/Sao_Paulo')))->format('Y-m-d');
-        foreach($ids as $id){$progress[$id]=(new \App\Service\Evolucao())->state($id,$today)['percentual'];}
+        foreach($rows as $a){$progress[$a->id]=$a->tipo_planejamento===\App\Service\Planejamento::CORRETIVA?null:(new \App\Service\Evolucao())->state((int)$a->id,$today)['percentual'];}
         $this->set(compact('rows','metrics','progress')); $this->options();
     }
     public function add()
@@ -49,7 +49,7 @@ class AtividadesController extends OperacaoController
         $rows = $this->fetchTable('Apontamentos')->find()->where(['atividade_id' => $activity->id])->orderBy(['inicio' => 'ASC'])->all();
         $totals = []; $total = 0;
         foreach ($rows as $row) { if (!$row->cancelado) { $key = $row->funcionario_chave; $totals[$key] ??= ['nome' => $row->funcionario_nome, 'matricula' => $row->funcionario_matricula, 'minutos' => 0]; $totals[$key]['minutos'] += $row->minutos; $total += $row->minutos; } }
-        $metrics=(new \App\Service\FilaPcm())->metrics([(int)$id]);$progress=(new \App\Service\Evolucao())->state((int)$id,(new \DateTimeImmutable('now',new \DateTimeZone('America/Sao_Paulo')))->format('Y-m-d'));
+        $metrics=(new \App\Service\FilaPcm())->metrics([(int)$id]);$progress=$activity->tipo_planejamento===\App\Service\Planejamento::CORRETIVA?['percentual'=>null]:(new \App\Service\Evolucao())->state((int)$id,(new \DateTimeImmutable('now',new \DateTimeZone('America/Sao_Paulo')))->format('Y-m-d'));
         $areaId=$activity->area_curva_id??$activity->caderno?->area_curva_id;
         $areaCurva=$areaId?$this->fetchTable('AreasFabrica')->get($areaId)->nome:'Pendente de classificação administrativa';
         $historyPage=(new \App\Service\Curva())->historyPage((int)$id,max(1,(int)$this->request->getQuery('pagina',1)));

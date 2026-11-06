@@ -46,7 +46,7 @@ class EvolucaoController extends OperacaoController
                 return $this->redirect($this->request->getRequestTarget());
             } catch (\DomainException $e) { $this->Flash->error($e->getMessage()); }
         }
-        $q=Access::activityScope($this->fetchTable('Atividades')->find(),$this->currentUser)->where(['Atividades.entressafra_id'=>$season])->contain(['Cadernos','SetorExecutante'])->orderBy(['Atividades.os_numero'=>'ASC','Atividades.id'=>'ASC']);
+        $q=Access::activityScope($this->fetchTable('Atividades')->find(),$this->currentUser)->where(['Atividades.tipo_planejamento'=>\App\Service\Planejamento::PROGRAMADA,'Atividades.entressafra_id'=>$season])->contain(['Cadernos','SetorExecutante'])->orderBy(['Atividades.os_numero'=>'ASC','Atividades.id'=>'ASC']);
         foreach(['setor_id'=>'setor_executante_id','caderno_id'=>'caderno_id'] as $filter=>$field)if($this->request->getQuery($filter))$q->where(['Atividades.'.$field=>(int)$this->request->getQuery($filter)]);
         foreach(['os'=>'os_numero','bem'=>'bem'] as $filter=>$field)if($this->request->getQuery($filter))$q->where(['Atividades.'.$field.' LIKE'=>'%'.(string)$this->request->getQuery($filter).'%']);
         if($this->request->getQuery('pendentes')){
@@ -114,7 +114,7 @@ class EvolucaoController extends OperacaoController
                 if ($preview===null) { return $this->redirect($this->request->getRequestTarget()); }
             } catch (\DomainException $e) { $this->Flash->error($e->getMessage()); }
         }
-        $q=$this->fetchTable('Atividades')->find()->select(['id','os_numero','bem','setor_executante_id','caderno_id'])->where(['Atividades.entressafra_id'=>$season])->contain(['Cadernos','SetorExecutante'])->orderBy(['Atividades.os_numero'=>'ASC']);
+        $q=$this->fetchTable('Atividades')->find()->select(['id','os_numero','bem','setor_executante_id','caderno_id'])->where(['Atividades.tipo_planejamento'=>\App\Service\Planejamento::PROGRAMADA,'Atividades.entressafra_id'=>$season])->contain(['Cadernos','SetorExecutante'])->orderBy(['Atividades.os_numero'=>'ASC']);
         $activitiesTotal=$q->count();$weightPages=max(1,(int)ceil($activitiesTotal/10));$weightPage=max(1,min((int)$this->request->getQuery('pagina',1),$weightPages));$activities=[];
         foreach($q->limit(10)->offset(($weightPage-1)*10)->all() as $a)$activities[]=$a->toArray()+['caderno_nome'=>$a->caderno?->nome??'Sem caderno','setor_nome'=>$a->setor_executante?->nome??'Pendente'];
         $weightVersions=$s->versions($season,'pesos'); $planVersions=$s->versions($season,'metas');

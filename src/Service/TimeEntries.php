@@ -95,7 +95,7 @@ final class TimeEntries
                 if (!$existing) {
                     PeriodoContexto::writable((int)$activity->entressafra_id);
                 }
-                if (!$existing && ($activity->setor_executante_id===null || $activity->identificacao_setor!=='area_totvs')) { throw new \DomainException('Setor executante da O.S. pendente de identificação pelo PCM.'); }
+                if (!$existing && $activity->tipo_planejamento!==Planejamento::CORRETIVA && ($activity->setor_executante_id===null || $activity->identificacao_setor!=='area_totvs')) { throw new \DomainException('Setor executante da O.S. pendente de identificação pelo PCM.'); }
                 if (!$existing) {
                     foreach(['entressafra_id'=>$activity->entressafra_id,'setor_id'=>$activity->setor_executante_id,'caderno_id'=>$notebook?->id] as $field=>$expected) {
                         $value=$input[$field]??'';
@@ -132,17 +132,17 @@ final class TimeEntries
                     $snapshot = json_decode($existing->snapshot, true, 512, JSON_THROW_ON_ERROR);
                 } else {
 
-                    $sector=Access::table('Setores')->get($activity->setor_executante_id);
-                    if (!$sector->ativo || $sector->area_totvs!==$activity->area_executante_totvs || $sector->filial_totvs!==$activity->os_filial) { throw new \DomainException('Mapeamento do setor executante divergente da área original da O.S. Solicite conferência ao PCM.'); }
+                    $sector=$activity->setor_executante_id?Access::table('Setores')->get($activity->setor_executante_id):null;
+                    if ($sector && (!$sector->ativo || $sector->area_totvs!==$activity->area_executante_totvs || $sector->filial_totvs!==$activity->os_filial)) { throw new \DomainException('Mapeamento do setor executante divergente da área original da O.S. Solicite conferência ao PCM.'); }
                     $employee = $this->totvs->employee((string)($input['funcionario_chave'] ?? ''));
                     foreach (['chave', 'nome', 'matricula', 'filial', 'vinculo'] as $field) {
                         if (!isset($employee[$field]) || !is_string($employee[$field]) || ($field !== 'filial' && trim($employee[$field]) === '') || strlen($employee[$field]) > ($field === 'matricula' || $field === 'filial' ? 100 : 255)) { throw new \DomainException('Identificação do funcionário incompleta ou ambígua.'); }
                     }
                     if ($employee['chave'] !== ($input['funcionario_chave'] ?? null) || ($employee['ativo'] ?? false) !== true) { throw new \DomainException('Funcionário não apto para novo apontamento. Férias, afastamentos e outras situações exigem regra ou autorização definida pelo PCM.'); }
                     if (($employee['identificacao']??'')==='matricula_010' && $table->find()->where(['cancelado'=>false,'funcionario_chave <> funcionario_matricula'])->count()>0) { throw new \DomainException('Há apontamentos ativos com a identificação anterior. Solicite análise do histórico antes de habilitar novas matrículas; nenhum registro foi alterado.'); }
-                    $sector = Access::table('Setores')->get($activity->setor_executante_id);
+                    $sector = $activity->setor_executante_id?Access::table('Setores')->get($activity->setor_executante_id):null;
                     $season = Access::table('Entressafras')->get($activity->entressafra_id);
-                    $snapshot = ['funcionario' => $employee, 'os_numero' => $activity->os_numero, 'os_filial' => $activity->os_filial, 'os_chave' => $activity->os_chave, 'servico' => $activity->servico, 'bem' => $activity->bem, 'setor_id' => $sector->id, 'setor_nome' => $sector->nome,'area_executante_totvs'=>$activity->area_executante_totvs,'area_fisica_referencia'=>$notebook?->area_fisica, 'caderno_id' => $notebook?->id, 'caderno_nome' => ($notebook?->nome??'Sem caderno'), 'entressafra_id' => $season->id, 'entressafra_nome' => $season->nome];
+                    $snapshot = ['funcionario' => $employee, 'os_numero' => $activity->os_numero, 'os_filial' => $activity->os_filial, 'os_chave' => $activity->os_chave, 'servico' => $activity->servico, 'bem' => $activity->bem, 'setor_id' => $sector?->id, 'setor_nome' => $sector?->nome??'Pendente de conferência pelo PCM','area_executante_totvs'=>$activity->area_executante_totvs,'area_fisica_referencia'=>$notebook?->area_fisica, 'caderno_id' => $notebook?->id, 'caderno_nome' => ($notebook?->nome??'Sem caderno'), 'entressafra_id' => $season->id, 'entressafra_nome' => $season->nome];
                 }
                 if(!$existing&&!$validateOnly){
                     if($table->getConnection()->getDriver() instanceof \Cake\Database\Driver\Postgres)$table->getConnection()->execute('SELECT id FROM entressafras WHERE id=? FOR SHARE',[(int)$activity->entressafra_id]);
