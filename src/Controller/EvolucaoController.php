@@ -159,9 +159,13 @@ class EvolucaoController extends OperacaoController
         $seasonRow=$this->fetchTable('Entressafras')->get($season);
         $areaName=$demo?'Elétrica · equipe executante (DEMONSTRAÇÃO)':($area==='pendentes'?'Pendências de classificação':($area!==''?($areas[(int)$area]??'Área'):'Consolidado da entressafra'));
         $this->set(compact('report','area','search','demo','areas','areaName','seasonRow'));
-        $weekly=!$demo&&ctype_digit($area)&&isset($weeklyService->areas($season)[(int)$area])?$weeklyService->report($season,(int)$area):null;
+        $cutoff=$this->request->getQuery('corte');$mode=$this->request->getQuery('exibicao','automatica');
+        if(!is_string($mode)||($cutoff!==null&&!is_string($cutoff)))throw new \Cake\Http\Exception\BadRequestException('Filtro inválido.');
+        $cutoff=$cutoff===''?null:$cutoff;
+        try{$weekly=!$demo&&ctype_digit($area)&&isset($weeklyService->areas($season)[(int)$area])?$weeklyService->report($season,(int)$area,null,$cutoff,$simulation?'semanal':$mode):null;}
+        catch(\DomainException $e){throw new \Cake\Http\Exception\BadRequestException($e->getMessage());}
         if($weekly!==null) {
-            $displayDate=(new \DateTimeImmutable('now',new \DateTimeZone('America/Sao_Paulo')))->format('Y-m-d');
+            $displayDate=$cutoff??(new \DateTimeImmutable('now',new \DateTimeZone('America/Sao_Paulo')))->format('Y-m-d');
             $weekly['display_days']=\App\Service\ProgramacaoAutomatica::position($weeklyService->automaticCalendar($season,(int)$area),$displayDate)+['data'=>$displayDate];
             if($simulation){
                 try{$weekly=\App\Service\CurvaSimulacao::report($weekly);}

@@ -43,12 +43,76 @@ class CurvaSemanalTest extends TestCase
     {
         $table=Access::table('CalendariosOperacionais');$table->saveOrFail(Access::entity($table,['entressafra_id'=>$this->season,'chave'=>'area:'.$area,'area_fabrica_id'=>$area,'data_inicio'=>$start,'data_fim'=>$end,'inicio_confirmado'=>true,'dias_semana'=>'[1,2,3,4,5,6,7]']));
     }
+    public function testMeetingPeriodsAreConsecutiveAndSwitchAtYearBoundary(): void
+    {
+        $points=CurvaSemanal::periods('2026-10-05','2027-02-01','automatica');
+        $this->assertSame('2026-10-19',$points[0]['fim']);
+        foreach($points as $i=>$point){
+            if($i)$this->assertSame((new \DateTimeImmutable($points[$i-1]['fim']))->modify('+1 day')->format('Y-m-d'),$point['inicio']);
+            $this->assertLessThanOrEqual(str_starts_with($point['inicio'],'2026')?14:6,(int)(new \DateTimeImmutable($point['inicio']))->diff(new \DateTimeImmutable($point['fim']))->format('%a'));
+        }
+        $january=array_values(array_filter($points,fn($p)=>str_starts_with($p['inicio'],'2027')));
+        $this->assertSame('2027-01-01',$january[0]['inicio']);$this->assertSame('2027-01-04',$january[0]['fim']);
+        $this->assertSame('2027-02-01',end($points)['fim']);
+    }
+    public function testHistoricalCutoffRejectsLaterInsertionsAndCorrectionsIncludingTimezone(): void
+    {
+        $this->autoCalendar($this->area);$service=new CurvaSemanal();$now=new \DateTimeImmutable('2026-11-10T12:00:00-03:00');
+        $before=$service->report($this->season,$this->area,$now,'2026-10-19','automatica');
+        $this->assertSame(62.5,$before['latest']['realizado']);
+        // 02:59:59 UTC is still Monday in São Paulo; 03:00 UTC is Tuesday.
+        $this->record($this->orders[0],40,2,'2026-10-20 02:59:59');
+        $expected=$service->report($this->season,$this->area,$now,'2026-10-19','automatica');
+        $this->assertSame(47.5,$expected['latest']['realizado']);
+        $this->record($this->orders[0],100,3,'2026-10-20 03:00:00');
+        $this->assertSame($expected,$service->report($this->season,$this->area,$now,'2026-10-19','automatica'));
+        foreach($expected['points'] as $point)if($point['inicio']>'2026-10-19')$this->assertNull($point['realizado']);
+        $this->assertSame('2026-10-19T23:59:59',$expected['latest']['data']);
+        $this->assertSame(62.5,$service->report($this->season,$this->area,$now)['latest']['realizado']);
+        $cut=$service->report($this->season,$this->area,$now,'2026-11-09','automatica');
+        $db=Access::table('Atividades')->getConnection();
+        $db->insert('evolucao_semanas',['entressafra_id'=>$this->season,'referencia'=>'2026-11-02']);
+        $week=(int)$db->execute('SELECT id FROM evolucao_semanas WHERE entressafra_id=? AND referencia=?',[$this->season,'2026-11-02'])->fetch('assoc')['id'];
+        $db->insert('evolucao_registros',['atividade_id'=>$this->orders[0],'semana_id'=>$week,'percentual'=>100,'revisao'=>1,'usuario_id'=>$this->admin,'observacoes'=>'Teste de inserção retroativa','motivo'=>'Teste','created'=>'2026-11-10 10:00:00']);
+        $this->record($this->orders[1],100,2,'2026-11-10 10:00:00');
+        $this->assertSame($cut,$service->report($this->season,$this->area,$now,'2026-11-09','automatica'));
+        $this->assertSame(67.5,$service->report($this->season,$this->area,$now)['latest']['realizado']);
+    }
+    public function testSectorStartEndAndNotStartedAreIndependent(): void
+    {
+        $table=Access::table('Entressafras');$row=$table->get($this->season);$row->data_fim='2027-03-01';$table->saveOrFail($row);
+        $this->autoCalendar($this->area);$this->autoCalendar($this->other,'2027-01-10','2027-02-01');
+        $service=new CurvaSemanal();$now=new \DateTimeImmutable('2026-11-10T12:00:00-03:00');
+        $report=$service->report($this->season,$this->other,$now,null,'automatica');
+        $this->assertTrue($report['not_started']);$this->assertNull($report['latest']);
+        $this->assertSame('2027-01-10',$report['points'][0]['inicio']);
+        $this->assertSame('2027-01-10T00:00:00',$report['graph_start']);
+        $this->assertSame('2027-02-01',end($report['points'])['fim']);
+        $ended=$service->report($this->season,$this->area,$now,null,'automatica');
+        $this->assertFalse($ended['not_started']);$this->assertSame(0,$ended['days']['restantes']);
+        $this->assertSame('2026-11-02',end($ended['points'])['fim']);
+    }
+    public function testCutoffControlsSurviveHttpRefreshAndWeeklyMatchesPeriodEnd(): void
+    {
+        $this->autoCalendar($this->area);$service=new CurvaSemanal();$now=new \DateTimeImmutable('2026-11-10T12:00:00-03:00');
+        $weekly=$service->report($this->season,$this->area,$now,'2026-10-28','semanal');
+        $automatic=$service->report($this->season,$this->area,$now,'2026-10-28','automatica');
+        $this->assertSame($weekly['latest']['realizado'],$automatic['latest']['realizado']);
+        $position=\App\Service\ProgramacaoAutomatica::position($service->automaticCalendar($this->season,$this->area),'2026-10-28');
+        $this->assertSame($position['programado'],$automatic['latest']['programado']);
+        $this->assertSame($position['programado'],$automatic['points'][0]['programado']);
+        Access::table('Atividades')->updateAll(['tipo_planejamento'=>'CORRETIVA_NAO_PROGRAMADA'],['id'=>$this->orders[0]]);
+        $this->assertSame(50.0,$service->report($this->season,$this->area,$now,'2026-10-28','automatica')['latest']['realizado']);
+        $url='/controle-pcm?area_id='.$this->area.'&corte=2026-10-28&exibicao=automatica';
+        for($i=0;$i<2;$i++){$this->get($url);$this->assertResponseOk();$this->assertResponseContains('value="2026-10-28"');$this->assertResponseContains('value="automatica" checked');}
+        $this->get('/controle-pcm?area_id='.$this->area.'&corte=2026-02-30');$this->assertResponseCode(400);
+    }
     public function testAutomaticSectorDurationsDoNotDependOnManualGoalsOrRealized(): void
     {
         $this->autoCalendar($this->area);$this->autoCalendar($this->other,'2026-10-20','2026-10-26');$service=new CurvaSemanal();
         $now=new \DateTimeImmutable('2026-10-27T12:00:00-03:00');
         $this->assertEqualsWithDelta(69.5,$service->report($this->season,$this->area,$now)['points'][1]['programado'],1e-12);
-        $this->assertSame(100.,$service->report($this->season,$this->other,$now)['points'][1]['programado']);
+        $this->assertSame(100.,$service->report($this->season,$this->other,$now)['points'][0]['programado']);
         $service->savePlan($this->admin,$this->season,$this->area,['2026-10-27'=>1],'Fixture de meta legada',0);
         Access::table('EvolucaoRegistros')->deleteAll([]);
         $this->assertEqualsWithDelta(69.5,$service->report($this->season,$this->area,$now)['points'][1]['programado'],1e-12);
@@ -89,7 +153,8 @@ class CurvaSemanalTest extends TestCase
         $report=$service->report($this->season,$this->area,new \DateTimeImmutable('2026-10-27T12:00:00-03:00'));
         // Revision 2 is effective in the first week, so both live positions are now 100%.
         $this->assertSame(0.0,$report['latest']['evolucao_semanal']);$this->assertSame(100.0,$report['points'][0]['realizado']);$this->assertSame(62.5,$report['points'][0]['realizado_publicado']);$this->assertSame(100.,$report['points'][2]['realizado']);
-        $this->assertSame(100.,$report['points'][2]['programado']);
+        $position=\App\Service\ProgramacaoAutomatica::position($service->automaticCalendar($this->season,$this->area),'2026-10-27');
+        $this->assertSame($position['programado'],$report['points'][2]['programado']);
     }
     public function testTuesdayWeeksPartialStartAndFinalWeek(): void
     {
@@ -202,7 +267,7 @@ class CurvaSemanalTest extends TestCase
         (new CurvaSemanal())->close($this->admin,$this->season,$this->area,'2026-10-27',null,null,new \DateTimeImmutable('2026-10-27T12:00:00Z'));
         $db=$areas->getConnection();
         $state=static function()use($db):array{$out=[];foreach(['atividades','apontamentos','insumos','evolucao_registros','evolucao_versoes','calendarios_operacionais','auditorias'] as $table)$out[$table]=$db->execute('SELECT * FROM '.$table.' ORDER BY id')->fetchAll('assoc');return $out;};
-        $before=$state();$url='/controle-pcm?area_id='.$this->area;
+        $before=$state();$url='/controle-pcm?exibicao=semanal&area_id='.$this->area;
         $extract=static function(string $html):array{$doc=new \DOMDocument();@$doc->loadHTML($html);$xp=new \DOMXPath($doc);return ['planned'=>$xp->query('//*[@data-series="programado"]')->item(0)->getAttribute('d'),'bar'=>$doc->saveHTML($xp->query('//*[@data-total]')->item(0)),'weeks'=>$xp->query('//*[@data-week]')->length,'realized'=>$xp->query('//*[@data-series="realizado"]')->item(0)->getAttribute('d')];};
         $this->get($url);$this->assertResponseOk();$real=$extract((string)$this->_response->getBody());$this->assertResponseContains('Simular evolução');
         $this->get($url.'&simular=eletrica');$this->assertResponseOk();$this->assertHeader('Cache-Control','no-store, private');
@@ -225,7 +290,7 @@ class CurvaSemanalTest extends TestCase
         $url='/curva-s/programacao?area_id='.$this->area;$this->get($url);$this->assertResponseOk();$this->assertResponseContains('2026-10-20');
         $this->post($url,['acao'=>'metas','base'=>'0','metas'=>['2026-10-20'=>'5','2026-10-27'=>'35'],'motivo'=>'Plano HTTP']);$this->assertResponseOk();$this->assertSame(0,Access::table('EvolucaoVersoes')->find()->where(['tipo'=>'curva_meta'])->count());
         $this->post($url,['acao'=>'apurar','referencia'=>'2026-10-27']);$this->assertResponseCode(302);
-        $this->get('/controle-pcm?area_id='.$this->area);$this->assertResponseOk();$this->assertResponseContains('63%');$this->assertResponseContains('70%');$this->assertResponseContains('Atrasado');$this->assertResponseContains('data-series="tendencia"');$this->assertResponseNotContains('Pesos oficiais pendentes');
+        $this->get('/controle-pcm?exibicao=semanal&area_id='.$this->area);$this->assertResponseOk();$this->assertResponseContains('63%');$this->assertResponseContains('70%');$this->assertResponseContains('Atrasado');$this->assertResponseContains('data-series="tendencia"');$this->assertResponseNotContains('Pesos oficiais pendentes');
         $this->assertResponseContains('data-value="62.5"');$this->assertResponseContains('-7,00 p.p.');
         $this->assertDoesNotMatchRegularExpression('/\d+[,.]\d+%/',(string)$this->_response->getBody());
         $dom=new \DOMDocument();@$dom->loadHTML((string)$this->_response->getBody());$xp=new \DOMXPath($dom);

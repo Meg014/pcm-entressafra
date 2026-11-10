@@ -120,18 +120,19 @@ final class CurvaSemanal
     }
     public static function trend(array $points): array
     {
+        $positionDate=static fn(array $point)=>self::date(substr($point['data']??$point['fim']??$point['referencia'],0,10));
         $past=array_values(array_filter($points,fn($point)=>$point['realizado']!==null));
         if(count($past)<3)return $points;
         $recent=array_slice($past,-4);$rates=[];
         for($i=1;$i<count($recent);$i++){
-            $days=(int)self::date($recent[$i-1]['referencia'])->diff(self::date($recent[$i]['referencia']))->format('%a');
+            $days=(int)$positionDate($recent[$i-1])->diff($positionDate($recent[$i]))->format('%a');
             if($days>0)$rates[]=($recent[$i]['realizado']-$recent[$i-1]['realizado'])*7/$days;
         }
         if(count($rates)<2)return $points;
         $average=array_sum($rates)/count($rates);$last=$past[count($past)-1];
         foreach($points as &$point){
             if($point['referencia']<$last['referencia'])continue;
-            $days=(int)self::date($last['referencia'])->diff(self::date($point['referencia']))->format('%a');
+            $days=(int)$positionDate($last)->diff($positionDate($point))->format('%a');
             $point['tendencia']=(float)max(0.,min(100.,$last['realizado']+$average*$days/7));
         }unset($point);return $points;
     }
@@ -140,18 +141,38 @@ final class CurvaSemanal
         $row=Access::table('Entressafras')->get($season);PeriodoContexto::season($season);
         return ProgramacaoAutomatica::calendar($row->data_inicio->format('Y-m-d'),$row->data_fim->format('Y-m-d'),$this->calendar($season,$area));
     }
-    public function report(int $season,int $area,?\DateTimeImmutable $now=null): array
+    public static function periods(string $start,string $end,string $mode): array
+    {
+        if (!in_array($mode,['automatica','semanal'],true)) throw new \DomainException('Exibição inválida.');
+        if ($mode==='semanal') return self::weeks($start,$end);
+        $points=[];$from=self::date($start);$last=self::date($end);
+        if($from>$last)throw new \DomainException('Período de acompanhamento inválido.');
+        while($from<=$last){
+            if($from->format('Y')==='2026') $to=min($from->modify('+14 days'),self::date('2026-12-31'),$last);
+            else $to=min($from->modify('next tuesday')->modify('-1 day'),$last);
+            $points[]=['semana'=>count($points)+1,'inicio'=>$from->format('Y-m-d'),'fim'=>$to->format('Y-m-d'),'referencia'=>$to->modify('+1 day')->format('Y-m-d')];
+            $from=$to->modify('+1 day');
+        }
+        return $points;
+    }
+    public function report(int $season,int $area,?\DateTimeImmutable $now=null,?string $cutoff=null,string $mode='semanal'): array
     {
         [$seasonRow,$weeks]=$this->context($season,$area);
         $today=($now??new \DateTimeImmutable('now'))->setTimezone(new \DateTimeZone('America/Sao_Paulo'))->format('Y-m-d');
+        if($cutoff!==null){self::date($cutoff);if($cutoff>$today)throw new \DomainException('A data de corte não pode ser futura.');$today=$cutoff;}
+        $calendar=$this->automaticCalendar($season,$area);
+        $start=$calendar['inicio']??$seasonRow->data_inicio->format('Y-m-d');
+        $end=$calendar['fim']??$seasonRow->data_fim->format('Y-m-d');
+        $weeks=self::periods($start,$end,$mode);
         $plans=$this->versions($season,$area,'curva_meta'); // Legacy versions remain inspectable, never used for the automatic line.
         $versions=$this->versions($season,$area,'curva_sem');$closed=[];
-        foreach($versions as $version)$closed[$version['referencia_semanal']]??=$version;
+        foreach($versions as $version)if($cutoff===null&&$mode==='semanal')$closed[$version['referencia_semanal']]??=$version;
         $live=new Evolucao();$live->loadHistory($season);
         [$where,$params]=(new Curva())->scope($season,(string)$area);
         $currentRoster=$this->db()->execute('SELECT a.id,a.created FROM atividades a LEFT JOIN cadernos c ON c.id=a.caderno_id WHERE '.$where,$params)->fetchAll('assoc');
         $asOf=($now??new \DateTimeImmutable('now'))->setTimezone(new \DateTimeZone('UTC'))->format('Y-m-d H:i:s');
-        $calendar=$this->automaticCalendar($season,$area);$points=[];$latest=null;$due=[];$realized=[];
+        if($cutoff!==null){$asOf=self::date($cutoff)->setTime(23,59,59)->setTimezone(new \DateTimeZone('UTC'))->format('Y-m-d H:i:s');$currentRoster=array_values(array_filter($currentRoster,fn($order)=>$order['created']<=$asOf));}
+        $points=[];$latest=null;$due=[];$realized=[];
         foreach($weeks as $week){
             $snapshot=isset($closed[$week['referencia']])&&$week['referencia']<=$today?json_decode($closed[$week['referencia']]['conteudo'],true,512,JSON_THROW_ON_ERROR):null;
             $position=ProgramacaoAutomatica::position($calendar,$week['fim']);
@@ -172,17 +193,24 @@ final class CurvaSemanal
                 }
                 if($snapshot&&count($published)!==count($roster))$point['revisao_pendente']=true;
                 $point['quantidade']=count($roster);$point['realizado']=$roster?$sum/count($roster):null;
-                if(!$snapshot)$point['programado_apurado']=$position['programado'];
+                if(!$snapshot)$point['programado_apurado']=ProgramacaoAutomatica::position($calendar,$reference)['programado'];
+                $point['data']=$reference.'T23:59:59';
+                if($reference<$week['fim'])$point['programado']=ProgramacaoAutomatica::position($calendar,$reference)['programado'];
             }
             $point['diferenca']=$point['programado_apurado']!==null&&$point['realizado']!==null?$point['realizado']-$point['programado_apurado']:null;
             $previous=self::date($week['referencia'])->modify('-7 days')->format('Y-m-d');
             $point['evolucao_semanal']=$point['realizado']!==null&&isset($realized[$previous])?$point['realizado']-$realized[$previous]:null;
             if($point['realizado']!==null)$realized[$week['referencia']]=$point['realizado'];
             $points[]=$point;
-            if($week['inicio']<=$today){$latest=$point;if($snapshot)$latest['programado']=$point['programado_apurado'];}
+            if($week['inicio']<=$today){$latest=$point;$latest['programado']=$point['programado_apurado'];}
             if($week['referencia']<=$today&&!$snapshot)$due[]=$week;
         }
-        return ['points'=>self::trend($points),'latest'=>$latest,'due'=>$due,'plans'=>$plans,'targets'=>[],'base'=>0,'versions'=>$versions,'days'=>$this->operatingDays($season,$area,$latest['fim']??null),'automatic'=>ProgramacaoAutomatica::metadata($calendar,$latest['fim']??null),'programmed_graph'=>ProgramacaoAutomatica::curve($calendar,$seasonRow->data_inicio->format('Y-m-d'),$seasonRow->data_fim->format('Y-m-d')),'graph_start'=>$seasonRow->data_inicio->format('Y-m-d').'T00:00:00','graph_end'=>$seasonRow->data_fim->format('Y-m-d').'T23:59:59'];
+        if($latest&&($cutoff!==null||$mode==='automatica')){
+            $reference=min($today,$end);$previous=self::date($reference)->modify('-7 days')->format('Y-m-d');$sum=0.;
+            foreach($currentRoster as $order)$sum+=$live->state((int)$order['id'],$previous,$asOf)['percentual'];
+            $latest['evolucao_semanal']=$currentRoster?$latest['realizado']-$sum/count($currentRoster):null;
+        }
+        return ['cutoff'=>$cutoff,'mode'=>$mode,'not_started'=>$today<$start,'operational_start'=>$start,'points'=>self::trend($points),'latest'=>$latest,'due'=>$due,'plans'=>$plans,'targets'=>[],'base'=>0,'versions'=>$versions,'days'=>$this->operatingDays($season,$area,min($today,$end)),'automatic'=>ProgramacaoAutomatica::metadata($calendar,min($today,$end)),'programmed_graph'=>ProgramacaoAutomatica::curve($calendar,$start,$end),'graph_start'=>$start.'T00:00:00','graph_end'=>$end.'T23:59:59'];
     }
     public function calendar(int $season,int $area): ?array
     {
