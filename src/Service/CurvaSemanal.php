@@ -155,20 +155,22 @@ final class CurvaSemanal
         }
         return $points;
     }
-    public function report(int $season,int $area,?\DateTimeImmutable $now=null,?string $cutoff=null,string $mode='semanal'): array
+    public function report(int $season,int $area,?\DateTimeImmutable $now=null,?string $cutoff=null,string $mode='semanal',string $group='geral'): array
     {
         [$seasonRow,$weeks]=$this->context($season,$area);
         $today=($now??new \DateTimeImmutable('now'))->setTimezone(new \DateTimeZone('America/Sao_Paulo'))->format('Y-m-d');
         if($cutoff!==null){self::date($cutoff);if($cutoff>$today)throw new \DomainException('A data de corte não pode ser futura.');$today=$cutoff;}
+        (new CurvaMecanica())->validate($season,$area,$group);
+        $classificationCutoff=$cutoff!==null?self::date($cutoff)->setTime(23,59,59)->setTimezone(new \DateTimeZone('UTC'))->format('Y-m-d H:i:s'):null;
         $calendar=$this->automaticCalendar($season,$area);
         $start=$calendar['inicio']??$seasonRow->data_inicio->format('Y-m-d');
         $end=$calendar['fim']??$seasonRow->data_fim->format('Y-m-d');
         $weeks=self::periods($start,$end,$mode);
         $plans=$this->versions($season,$area,'curva_meta'); // Legacy versions remain inspectable, never used for the automatic line.
         $versions=$this->versions($season,$area,'curva_sem');$closed=[];
-        foreach($versions as $version)if($cutoff===null&&$mode==='semanal')$closed[$version['referencia_semanal']]??=$version;
+        foreach($versions as $version)if($cutoff===null&&$mode==='semanal'&&$group==='geral')$closed[$version['referencia_semanal']]??=$version;
         $live=new Evolucao();$live->loadHistory($season);
-        [$where,$params]=(new Curva())->scope($season,(string)$area);
+        [$where,$params]=(new Curva())->scope($season,(string)$area,'',$group,$classificationCutoff);
         $currentRoster=$this->db()->execute('SELECT a.id,a.created FROM atividades a LEFT JOIN cadernos c ON c.id=a.caderno_id WHERE '.$where,$params)->fetchAll('assoc');
         $asOf=($now??new \DateTimeImmutable('now'))->setTimezone(new \DateTimeZone('UTC'))->format('Y-m-d H:i:s');
         if($cutoff!==null){$asOf=self::date($cutoff)->setTime(23,59,59)->setTimezone(new \DateTimeZone('UTC'))->format('Y-m-d H:i:s');$currentRoster=array_values(array_filter($currentRoster,fn($order)=>$order['created']<=$asOf));}
@@ -210,7 +212,7 @@ final class CurvaSemanal
             foreach($currentRoster as $order)$sum+=$live->state((int)$order['id'],$previous,$asOf)['percentual'];
             $latest['evolucao_semanal']=$currentRoster?$latest['realizado']-$sum/count($currentRoster):null;
         }
-        return ['cutoff'=>$cutoff,'mode'=>$mode,'not_started'=>$today<$start,'operational_start'=>$start,'points'=>self::trend($points),'latest'=>$latest,'due'=>$due,'plans'=>$plans,'targets'=>[],'base'=>0,'versions'=>$versions,'days'=>$this->operatingDays($season,$area,min($today,$end)),'automatic'=>ProgramacaoAutomatica::metadata($calendar,min($today,$end)),'programmed_graph'=>ProgramacaoAutomatica::curve($calendar,$start,$end),'graph_start'=>$start.'T00:00:00','graph_end'=>$end.'T23:59:59'];
+        return ['group'=>$group,'group_count'=>count($currentRoster),'cutoff'=>$cutoff,'mode'=>$mode,'not_started'=>$today<$start,'operational_start'=>$start,'points'=>self::trend($points),'latest'=>$latest,'due'=>$due,'plans'=>$plans,'targets'=>[],'base'=>0,'versions'=>$versions,'days'=>$this->operatingDays($season,$area,min($today,$end)),'automatic'=>ProgramacaoAutomatica::metadata($calendar,min($today,$end)),'programmed_graph'=>ProgramacaoAutomatica::curve($calendar,$start,$end),'graph_start'=>$start.'T00:00:00','graph_end'=>$end.'T23:59:59'];
     }
     public function calendar(int $season,int $area): ?array
     {

@@ -23,6 +23,7 @@ window.addEventListener('load', async () => {
   await refresh();
   check(requested === expectedUrl, 'URL preservada');
   check(requested.includes('corte=2026-11-09') && requested.includes('exibicao=automatica'), 'Filtros preservados');
+  check(requested.includes('grupo=redutores'), 'Grupo da Mecânica preservado');
   check(replaced && nextScroll.scrollLeft === 125, 'Relatório e rolagem preservados');
   requested = undefined; current.dataset.simulation = 'true'; await refresh();
   check(requested === undefined, 'Simulação sem atualização');

@@ -8,7 +8,7 @@ use Cake\Datasource\ConnectionManager;
 final class Curva
 {
     private function db() { return ConnectionManager::get('default'); }
-    public function scope(int $season,string $area='',string $search=''): array
+    public function scope(int $season,string $area='',string $search='',string $group='geral',?string $classificationCutoff=null): array
     {
         PeriodoContexto::season($season);
         $where='a.entressafra_id=? AND '.Planejamento::sql();$params=[$season];
@@ -23,6 +23,12 @@ final class Curva
             $pattern='%'.strtr(mb_strtolower($search),['!'=>'!!','%'=>'!%','_'=>'!_']).'%';
             $where.=" AND (LOWER(a.os_numero) LIKE ? ESCAPE '!' OR LOWER(a.descricao_atividade) LIKE ? ESCAPE '!' OR LOWER(a.servico) LIKE ? ESCAPE '!' OR LOWER(a.bem) LIKE ? ESCAPE '!')";
             array_push($params,$pattern,$pattern,$pattern,$pattern);
+        }
+        if($group!=='geral'){
+            $mechanical=new CurvaMecanica();$mechanical->validate($season,(int)$area,$group);
+            $ids=$mechanical->redutorIds($season,(int)$area,$classificationCutoff);
+            if($ids){$where.=' AND a.id '.($group==='redutores'?'IN':'NOT IN').' ('.implode(',',array_fill(0,count($ids),'?')).')';array_push($params,...$ids);}
+            elseif($group==='redutores')$where.=' AND 1=0';
         }
         return [$where,$params];
     }
@@ -40,9 +46,9 @@ final class Curva
         $zero=count(array_filter($values,fn($v)=>$v===0.0));$done=count(array_filter($values,fn($v)=>$v===100.0));
         return ['total'=>$total,'sem_inicio'=>$zero,'andamento'=>$total-$zero-$done,'concluidas'=>$done,'simples'=>$total?round(array_sum($values)/$total,4):null];
     }
-    public function report(int $season,string $area='',string $search='',int $page=1,bool $demo=false): array
+    public function report(int $season,string $area='',string $search='',int $page=1,bool $demo=false,string $group='geral'): array
     {
-        [$where,$params]=$this->scope($season,$area,$search);
+        [$where,$params]=$this->scope($season,$area,$search,$group);
         $today=(new \DateTimeImmutable('now',new \DateTimeZone('America/Sao_Paulo')))->format('Y-m-d');
         $s=Access::table('Entressafras')->get($season);$reference=min($today,$s->data_fim->format('Y-m-d'));
         if($demo){$where='a.entressafra_id=? AND a.area_executante_totvs=? AND '.Planejamento::sql();$params=[$season,'ELETRI'];}

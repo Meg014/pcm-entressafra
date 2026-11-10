@@ -154,17 +154,25 @@ class EvolucaoController extends OperacaoController
             $area=(string)$electricalArea;
             $this->setResponse($this->response->withHeader('Cache-Control','no-store, private'));
         }
-        try{$report=(new \App\Service\Curva())->report($season,$area,$search,(int)$this->request->getQuery('pagina',1),$demo);}
+        $mechanicalService=new \App\Service\CurvaMecanica();
+        $mechanical=!$demo&&!$simulation&&ctype_digit($area)&&$mechanicalService->isMechanical($season,(int)$area);
+        $group=$this->request->getQuery('grupo','geral');
+        if(!is_string($group)||!isset(\App\Service\CurvaMecanica::GROUPS[$group]))throw new \Cake\Http\Exception\BadRequestException('Curva da Mecânica inválida.');
+        if(!$mechanical)$group='geral';
+        $mechanicalCounts=$mechanical?$mechanicalService->counts($season,(int)$area):null;
+        try{$report=(new \App\Service\Curva())->report($season,$area,$search,(int)$this->request->getQuery('pagina',1),$demo,$group);}
         catch(\DomainException $e){throw new \Cake\Http\Exception\BadRequestException($e->getMessage());}
         $seasonRow=$this->fetchTable('Entressafras')->get($season);
         $areaName=$demo?'Elétrica · equipe executante (DEMONSTRAÇÃO)':($area==='pendentes'?'Pendências de classificação':($area!==''?($areas[(int)$area]??'Área'):'Consolidado da entressafra'));
+        if($mechanical)$areaName=\App\Service\CurvaMecanica::GROUPS[$group];
         $this->set(compact('report','area','search','demo','areas','areaName','seasonRow'));
         $cutoff=$this->request->getQuery('corte');$mode=$this->request->getQuery('exibicao','automatica');
         if(!is_string($mode)||($cutoff!==null&&!is_string($cutoff)))throw new \Cake\Http\Exception\BadRequestException('Filtro inválido.');
         $cutoff=$cutoff===''?null:$cutoff;
-        try{$weekly=!$demo&&ctype_digit($area)&&isset($weeklyService->areas($season)[(int)$area])?$weeklyService->report($season,(int)$area,null,$cutoff,$simulation?'semanal':$mode):null;}
+        try{$weekly=!$demo&&ctype_digit($area)&&isset($weeklyService->areas($season)[(int)$area])?$weeklyService->report($season,(int)$area,null,$cutoff,$simulation?'semanal':$mode,$group):null;}
         catch(\DomainException $e){throw new \Cake\Http\Exception\BadRequestException($e->getMessage());}
         if($weekly!==null) {
+            $weekly['mechanical']=$mechanical;$weekly['group']=$group;$weekly['group_counts']=$mechanicalCounts;
             $displayDate=$cutoff??(new \DateTimeImmutable('now',new \DateTimeZone('America/Sao_Paulo')))->format('Y-m-d');
             $weekly['display_days']=\App\Service\ProgramacaoAutomatica::position($weeklyService->automaticCalendar($season,(int)$area),$displayDate)+['data'=>$displayDate];
             if($simulation){
@@ -172,8 +180,35 @@ class EvolucaoController extends OperacaoController
                 catch(\DomainException $e){throw new \Cake\Http\Exception\BadRequestException($e->getMessage());}
             }
         }
-        $this->set(compact('weekly','simulation','electricalArea'));
+        $this->set(compact('weekly','simulation','electricalArea','mechanical','group','mechanicalCounts'));
         $this->viewBuilder()->setTemplate('acompanhamento');
+    }
+    public function redutores()
+    {
+        $this->request->allowMethod(['get','post']);Access::admin($this->currentUser);
+        [$season]=$this->context(new Evolucao());$service=new \App\Service\CurvaMecanica();
+        $selectedArea=$this->request->getQuery('area_id','');
+        if(!is_string($selectedArea)||!ctype_digit($selectedArea)||!$service->isMechanical($season,(int)$selectedArea))throw new \Cake\Http\Exception\BadRequestException('Selecione MECÂNICA na entressafra atual.');
+        $area=(int)$selectedArea;$orders=$service->orders($season,$area);$versions=$service->versions($season,$area);
+        $base=(int)($versions[0]['id']??0);$selected=$service->redutorIds($season,$area);$pasted='';$errors=[];
+        if($this->request->is('post')){
+            try{
+                $data=$this->request->getData();
+                if(($data['lista_completa']??null)!=='1')throw new \DomainException('O envio da lista ficou incompleto. Recarregue a página antes de salvar.');
+                if(!is_string($data['selecao_json']??''))throw new \DomainException('Seleção de O.S. inválida.');
+                if(($data['selecao_json']??'')!==''){
+                    try{$data['ordens']=json_decode($data['selecao_json'],true,512,JSON_THROW_ON_ERROR);}
+                    catch(\JsonException $e){throw new \DomainException('Seleção de O.S. inválida.');}
+                }
+                if(!is_array($data['ordens']??[])||!is_string($data['lista']??'')||!is_scalar($data['base']??null)||!ctype_digit((string)$data['base']))throw new \DomainException('Seleção de O.S. inválida.');
+                $pasted=$data['lista']??'';$selected=array_values(array_filter($data['ordens']??[],fn($id)=>is_scalar($id)&&ctype_digit((string)$id)));
+                $service->save((int)$this->currentUser->id,$season,$area,$data['ordens']??[],$pasted,(int)$data['base']);
+                $this->Flash->success('Lista de Redutores salva. As curvas foram recalculadas sem alterar os lançamentos.');
+                return $this->redirect(['action'=>'controle','?'=>['entressafra_id'=>$season,'area_id'=>$area,'grupo'=>'redutores']]);
+            }catch(\DomainException $e){$errors=explode("\n",$e->getMessage());$base=(int)($this->request->getData('base')??0);}
+        }
+        $counts=$service->counts($season,$area);$selected=array_map('intval',$selected);
+        $this->set(compact('season','area','orders','versions','base','selected','pasted','errors','counts'));
     }
     public function programacaoSemanal()
     {
