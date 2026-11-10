@@ -1,59 +1,54 @@
-# Curvas S da Mecânica
+# Curvas S da Mecânica — lista manual de Bombas
 
-Em Controle PCM / Curva S, MECÂNICA apresenta Redutores, Bombas / Demais e Mecânica Geral. A Geral continua como opção inicial, preservando o consolidado anterior. Outros setores não recebem esse controle.
+A regra definitiva é: **Bombas** contém somente as O.S. relacionadas manualmente pelo ADMIN_PCM; **Redutores** contém as demais O.S. programadas da Mecânica; **Mecânica — Geral** contém todas as programadas. Os grupos são disjuntos. As opções aparecem nessa ordem, preservando Geral como opção inicial do consolidado.
 
-Somente ADMIN_PCM encontra **Gerenciar O.S. de Redutores**. A tela permite pesquisar número/filial, marcar várias O.S., exibir somente as selecionadas, colar números separados por linha, vírgula ou ponto e vírgula, desmarcar para remover e salvar. O histórico mostra responsável, horário em Brasília e identidades de cada versão.
+A ação **Gerenciar O.S. de Bombas** permite pesquisar número/filial, selecionar várias O.S., colar números separados por linha, vírgula ou ponto e vírgula e remover O.S. ao desmarcar. Adicionar em Bombas retira de Redutores; remover devolve a Redutores. Números permanecem como texto, com zeros à esquerda. Ambiguidades exigem filial/número ou seleção da linha correta. Toda a lista é validada antes de gravar, sem salvamento parcial.
 
-O administrador controla apenas Redutores. Bombas / Demais é o complemento entre as O.S. programadas da Mecânica na entressafra. Nenhuma descrição ou equipamento do TOTVS determina o grupo. Identidades persistidas incluem entressafra, filial e `os_chave`, preservando o número como texto com zeros à esquerda. Números ambíguos exigem `filial/número` ou seleção da linha correta. Qualquer número inválido impede a alteração inteira.
+Cada grupo mantém a média simples de todas as suas O.S., inclusive as que estão em 0%. A Geral usa todas as O.S., sem calcular a média das médias dos grupos. Corretivas e O.S. de outros setores ou entressafras não são aceitas. As curvas compartilham o calendário operacional da Mecânica e mantêm períodos de 15 dias em 2026, semanas em 2027, corte histórico e atualização de 30 segundos.
 
-Cada curva usa a média simples de todas as O.S. do grupo, inclusive aquelas em 0%. A Geral usa todas as programadas; não usa a média não ponderada das duas médias parciais. Corretivas permanecem excluídas. As duas curvas usam o calendário operacional da Mecânica, portanto o Programado automático pode coincidir. Realizado, Diferença, Evolução e Tendência usam o grupo selecionado. Fechamentos publicados da Mecânica Geral não são reutilizados como se fossem fechamentos dos grupos.
+## Inspeção dos dados e migration
 
-## Persistência e histórico
+Antes da alteração, a inspeção do PostgreSQL local confirmou que a tabela `mecanica_curva_versoes` ainda não existia. Portanto, não há listas antigas nesse banco para converter. A implementação anterior, contudo, já existe no código e pode estar aplicada em outros ambientes.
 
-Migration nova: `config/Migrations/20261110120000_CreateMecanicaCurvaVersoes.php`.
+Nova migration: **20261110130000_MecanicaListaManualBombas**. Acrescenta `grupo_manual` na tabela existente, sem criar outra tabela. O padrão `redutores` identifica corretamente as versões antigas; todo novo salvamento informa explicitamente `bombas`. O PostgreSQL restringe os valores aos dois grupos.
 
-Cria somente `mecanica_curva_versoes`, com versões completas da lista, entressafra, setor, usuário, nome do responsável e persistência em UTC. No PostgreSQL, um trigger bloqueia UPDATE e DELETE do histórico. Classificação e auditoria são gravadas na mesma transação. O bloqueio da entressafra e a versão-base rejeitam alterações concorrentes obsoletas. Uma seleção idêntica não cria outra versão.
+A migration não inverte listas, não cria classificações nem altera conteúdo, responsável ou data das versões existentes. O trigger de imutabilidade continua ativo. A validação PostgreSQL aplicou a migration a registros legados em um esquema isolado, conferiu que somente o metadado foi acrescentado e que todos os campos anteriores permaneceram idênticos.
 
-Com corte, a última versão persistida até 23:59:59 de America/Sao_Paulo define a divisão dos grupos. Alterações posteriores não modificam essa divisão histórica. Antes da primeira versão, Redutores está vazio. Os percentuais continuam considerando referência semanal e persistência de cada revisão.
+Em instalações novas, são necessárias a migration de criação `20261110120000_CreateMecanicaCurvaVersoes` e a nova migration de identificação da regra. No banco local, continuam pendentes também as migrations anteriores identificadas na implementação original: `CreateServicosSugeridos`, `AddSessaoPermanenteComputador` e `AddTipoPlanejamento`. Não foram aplicadas alterações no esquema da aplicação durante este ajuste. O comando padrão `php bin/cake.php migrations migrate` aplica também essas pendências e deve fazer parte da implantação revisada.
 
-A limitação anterior sobre alterações de **setor principal, tipo de planejamento, vínculo com caderno e calendário operacional** permanece: esses cadastros não foram versionados por esta alteração. A divisão Redutores / Bombas tem histórico próprio; não resolve alterações posteriores nesses outros cadastros.
+## Compatibilidade com listas antigas
 
-Grupo, corte e exibição permanecem na URL usada pela atualização de 30 segundos. A pesquisa das O.S. preserva esses filtros. As quantidades identificadas como “classificação atual” mostram a lista atual; o gráfico com corte usa a divisão histórica.
+Versões antigas continuam significando **Redutores selecionados**; Bombas é seu complemento. As consultas históricas usam o significado da versão persistida até 23:59:59 de Brasília, sem reinterpretar uma lista antiga como Bombas.
 
-## Banco local e implantação
+Ao abrir o gerenciamento com uma última versão legada, as O.S. que já pertencem a Bombas (complemento da lista antiga) aparecem pré-selecionadas, com aviso. Abrir a tela não grava nada. Ao salvar, o administrador cria uma nova versão explicitamente de Bombas, preservando os grupos anteriores caso mantenha a seleção. Alterações posteriores seguem exclusivamente a regra nova. Sem nenhuma versão registrada, Bombas começa vazio e todas as programadas ficam em Redutores.
 
-A migration foi validada em esquema isolado no PostgreSQL, removido ao final, com conferência do conteúdo de sete tabelas existentes antes e depois. Nenhum cadastro ou lançamento foi alterado no banco da aplicação.
+O histórico administrativo identifica cada lista como Bombas ou Redutores (legado). Auditorias antigas permanecem intactas; as novas usam `mecanica_bombas_classificacao` e registram o significado das versões anterior e posterior. O controle de concorrência e a transação entre classificação e auditoria permanecem.
 
-O PostgreSQL local também apresenta estas migrations anteriores pendentes:
+A URL antiga de gerenciamento aceita somente GET e redireciona para a nova. POST de formulário antigo é rejeitado. A tela nova também exige `grupo_manual=bombas`, impedindo que uma seleção antiga seja salva acidentalmente com significado invertido.
 
-- `20261026140000_CreateServicosSugeridos`
-- `20261026150000_AddSessaoPermanenteComputador`
-- `20261106100000_AddTipoPlanejamento`
+A limitação anterior de setor principal, tipo de planejamento, vínculo com caderno e calendário operacional permanece: esses cadastros não têm versionamento por este ajuste. A classificação Bombas/Redutores e os percentuais possuem histórico próprio.
 
-A coluna `atividades.tipo_planejamento` ainda está ausente nesse banco e é uma dependência do filtro de programadas já existente. Essas pendências e a migration nova precisam ser aplicadas antes do uso nesse ambiente. Não foram aplicadas automaticamente para evitar mudanças nos outros módulos neste trabalho.
+## Arquivos alterados
 
-O comando padrão é `php bin/cake.php migrations migrate`. Ele aplica também as migrations anteriores pendentes, que devem integrar a revisão da implantação. A nova migration não modifica registros existentes e bloqueia rollback destrutivo do histórico.
+- `config/Migrations/20261110130000_MecanicaListaManualBombas.php`: metadado da regra e compatibilidade com registros antigos.
+- `src/Service/CurvaMecanica.php` e `src/Service/Curva.php`: lista manual de Bombas, complemento e leitura de versões antigas.
+- `src/Controller/EvolucaoController.php` e `config/routes.php`: gerenciamento de Bombas e bloqueio de formulários antigos.
+- `templates/Evolucao/bombas.php`: renomeado de `redutores.php`, com rótulos e histórico por regra.
+- `templates/element/curva_semanal.php`: seleção e explicação das curvas.
+- `webroot/js/mecanica-bombas.js`: renomeado de `mecanica-redutores.js`, com busca e seleção de Bombas.
+- `tests/TestCase/Service/CurvaSemanalTest.php`: inclusão, remoção, médias, corretivas, histórico, legado e formulários antigos.
+- `tools/test_mecanica_bombas_browser.js`: renomeado do teste de Redutores.
+- `tools/verify_mecanica_migration_postgres.php`: upgrade com registros antigos e preservação do histórico.
+- Este documento.
 
-## Arquivos
-
-- `src/Service/CurvaMecanica.php`: classificação, complemento, versões e auditoria.
-- `src/Service/Curva.php` e `src/Service/CurvaSemanal.php`: escopo e cálculo dos grupos.
-- `src/Controller/EvolucaoController.php` e `config/routes.php`: consulta e administração.
-- `templates/Evolucao/redutores.php`, `templates/Evolucao/acompanhamento.php` e `templates/element/curva_semanal.php`: gerenciamento e seleção.
-- `webroot/js/mecanica-redutores.js` e `webroot/css/curva-semanal.css`: busca local, seleção integral por JSON e apresentação.
-- `tests/TestCase/Service/CurvaSemanalTest.php`: regras, histórico, permissões, identidade e HTTP.
-- `tools/verify_mecanica_migration_postgres.php`: migration e imutabilidade no PostgreSQL isolado.
-- `tools/test_mecanica_redutores_browser.js` e `tools/test_curva_filtros_refresh.js`: testes de navegador.
-- A migration e este documento.
-
-Nenhum arquivo da tela Lançar porcentagem, de seu salvamento ou da integração TOTVS foi modificado.
+Nenhum arquivo da tela Lançar porcentagem, de salvamento dos percentuais ou da integração TOTVS foi modificado.
 
 ## Validação
 
-Resultado final: **109 testes aprovados, 1.833 asserções**. Verificação PostgreSQL e testes Chrome headless aprovados, inclusive gerenciamento em tela de 390 px. Sintaxe PHP e `git diff --check` sem erros.
+Resultado final: **111 testes aprovados e 1.855 asserções**. PostgreSQL isolado aprovado, incluindo upgrade de registros legados sem reinterpretá-los. Chrome headless aprovado para gerenciamento de Bombas em tela de 390 px e atualização com filtros. Sintaxe PHP e `git diff --check` sem erros.
 
 - `php vendor/phpunit/phpunit/phpunit tests/TestCase/Service --filter 'Curva|Evolucao|Planejamento' --no-progress`
 - `php tools/verify_mecanica_migration_postgres.php`
-- Chrome headless: busca, seleção múltipla, filtro de selecionados, contagens e envio JSON completo, sem truncamento por `max_input_vars`.
-- Chrome headless: atualização de 30 segundos com setor, grupo, corte e modo de exibição.
+- Chrome headless: busca, seleção múltipla, filtro de selecionados, contagens e envio completo em JSON.
+- Chrome headless: atualização de 30 segundos preservando setor, grupo, corte e exibição.
 - Sintaxe PHP e `git diff --check`.

@@ -36,7 +36,8 @@ return function (RouteBuilder $routes): void {
         $builder->connect('/evolucao/historico/{id}',['controller'=>'Evolucao','action'=>'historico'])->setPatterns(['id'=>'[1-9][0-9]*'])->setPass(['id'])->setMethods(['GET']);
         $builder->connect('/controle-pcm',['controller'=>'Evolucao','action'=>'controle'])->setMethods(['GET']);
         $builder->connect('/curva-s/programacao',['controller'=>'Evolucao','action'=>'programacaoSemanal'])->setMethods(['GET','POST']);
-        $builder->connect('/curva-s/redutores',['controller'=>'Evolucao','action'=>'redutores'])->setMethods(['GET','POST']);
+        $builder->connect('/curva-s/redutores',['controller'=>'Evolucao','action'=>'redutores'])->setMethods(['GET']);
+        $builder->connect('/curva-s/bombas',['controller'=>'Evolucao','action'=>'bombas'])->setMethods(['GET','POST']);
         $builder->connect('/vinculos-lote',['controller'=>'VinculosLote','action'=>'index'])->setMethods(['GET']);
         $builder->connect('/vinculos-lote/api',['controller'=>'VinculosLote','action'=>'api'])->setMethods(['GET','POST']);
         $builder->connect('/login', ['controller' => 'Auth', 'action' => 'login'])->setMethods(['GET', 'POST']);

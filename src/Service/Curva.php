@@ -26,9 +26,9 @@ final class Curva
         }
         if($group!=='geral'){
             $mechanical=new CurvaMecanica();$mechanical->validate($season,(int)$area,$group);
-            $ids=$mechanical->redutorIds($season,(int)$area,$classificationCutoff);
-            if($ids){$where.=' AND a.id '.($group==='redutores'?'IN':'NOT IN').' ('.implode(',',array_fill(0,count($ids),'?')).')';array_push($params,...$ids);}
-            elseif($group==='redutores')$where.=' AND 1=0';
+            $ids=$mechanical->bombaIds($season,(int)$area,$classificationCutoff);
+            if($ids){$where.=' AND a.id '.($group==='bombas'?'IN':'NOT IN').' ('.implode(',',array_fill(0,count($ids),'?')).')';array_push($params,...$ids);}
+            elseif($group==='bombas')$where.=' AND 1=0';
         }
         return [$where,$params];
     }

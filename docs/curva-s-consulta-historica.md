@@ -32,7 +32,7 @@ Nenhuma migration criada ou necessária para esta implementação.
 Resultado: 20 testes da Curva S aprovados, com 194 asserções, na execução final. Os outros 80 testes da regressão ampliada de Curva/Evolução também passaram. A execução ampliada identificou um campo obrigatório ausente em um novo registro de teste; o fixture foi corrigido e os 20 testes do módulo foram executados novamente. Chrome headless aprovou a atualização com filtros. Sintaxe PHP e `git diff --check` sem erros.
 
 - `php vendor/phpunit/phpunit/phpunit tests/TestCase/Service --filter 'Curva|Evolucao|Planejamento' --no-progress`
-- Abrir `tools/test_curva_filtros_refresh.html?area_id=7&corte=2026-11-09&exibicao=automatica&grupo=redutores` no Chrome (também validado em modo headless).
+- Abrir `tools/test_curva_filtros_refresh.html?area_id=7&corte=2026-11-09&exibicao=automatica&grupo=bombas` no Chrome (também validado em modo headless).
 - Verificação de sintaxe PHP e `git diff --check`.
 
 Os testes de serviço cobrem períodos consecutivos, mudança de ano, corte em 09/11/2026, revisões posteriores, limite de meia-noite em Brasília, período parcial, modo dinâmico, início em 10/01/2027, setor futuro, calendário concluído, exclusão de corretivas, equivalência dos acumulados, filtros HTTP e preservação dos fechamentos. O teste JavaScript usa o código real de atualização com respostas simuladas para verificar intervalo, URL, rolagem e isolamento da simulação.

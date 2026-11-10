@@ -6,7 +6,7 @@ namespace App\Service;
 /** Classification affects only Curva S. Percentage input and TOTVS are untouched. */
 final class CurvaMecanica
 {
-    public const GROUPS = ['redutores'=>'Mecânica — Redutores','bombas'=>'Mecânica — Bombas / Demais','geral'=>'Mecânica Geral'];
+    public const GROUPS = ['bombas'=>'Mecânica — Bombas','redutores'=>'Mecânica — Redutores','geral'=>'Mecânica — Geral'];
 
     private function db() { return Access::table('Atividades')->getConnection(); }
 
@@ -49,16 +49,28 @@ final class CurvaMecanica
 
     public function redutorIds(int $season, int $area, ?string $asOf=null): array
     {
+        return $this->groupIds($season,$area,'redutores',$asOf);
+    }
+
+    public function bombaIds(int $season, int $area, ?string $asOf=null): array
+    {
+        return $this->groupIds($season,$area,'bombas',$asOf);
+    }
+
+    private function groupIds(int $season, int $area, string $group, ?string $asOf): array
+    {
         $version=$this->version($season,$area,$asOf);
+        $manualGroup=$version?($version['grupo_manual']??'redutores'):'bombas';
+        if(!in_array($manualGroup,['redutores','bombas'],true))throw new \DomainException('Versão com grupo manual inválido.');
         $saved=$version?json_decode($version['conteudo'],true,512,JSON_THROW_ON_ERROR):[];
         $identities=[];foreach($saved as $row)$identities[self::identity($row)]=true;
-        return array_map(fn($row)=>(int)$row['id'],array_values(array_filter($this->orders($season,$area),fn($row)=>isset($identities[self::identity($row)]))));
+        return array_map(fn($row)=>(int)$row['id'],array_values(array_filter($this->orders($season,$area),fn($row)=>isset($identities[self::identity($row)])===($group===$manualGroup))));
     }
 
     public function counts(int $season, int $area): array
     {
-        $total=count($this->orders($season,$area));$redutores=count($this->redutorIds($season,$area));
-        return ['redutores'=>$redutores,'bombas'=>$total-$redutores,'geral'=>$total];
+        $total=count($this->orders($season,$area));$bombas=count($this->bombaIds($season,$area));
+        return ['redutores'=>$total-$bombas,'bombas'=>$bombas,'geral'=>$total];
     }
 
     /** Save a complete selection atomically. base prevents lost changes between administrators. */
@@ -88,10 +100,10 @@ final class CurvaMecanica
             ksort($selected);$content=[];
             foreach($selected as $row)$content[]=['atividade_id'=>(int)$row['id'],'entressafra_id'=>$season,'os_filial'=>(string)$row['os_filial'],'os_chave'=>(string)$row['os_chave'],'os_numero'=>(string)$row['os_numero']];
             $json=json_encode($content,JSON_THROW_ON_ERROR);
-            if($old&&$old['conteudo']===$json)return (int)$old['id'];
-            $this->db()->insert('mecanica_curva_versoes',['entressafra_id'=>$season,'area_curva_id'=>$area,'usuario_id'=>$actor->id,'usuario_nome'=>$actor->nome,'conteudo'=>$json,'created'=>gmdate('Y-m-d H:i:s')]);
+            if($old&&($old['grupo_manual']??'redutores')==='bombas'&&$old['conteudo']===$json)return (int)$old['id'];
+            $this->db()->insert('mecanica_curva_versoes',['entressafra_id'=>$season,'area_curva_id'=>$area,'usuario_id'=>$actor->id,'usuario_nome'=>$actor->nome,'conteudo'=>$json,'grupo_manual'=>'bombas','created'=>gmdate('Y-m-d H:i:s')]);
             $version=$this->version($season,$area);$id=(int)$version['id'];
-            Access::audit($actor,'mecanica_redutores_classificacao',null,$old?['versao_id'=>(int)$old['id'],'redutores'=>json_decode($old['conteudo'],true,512,JSON_THROW_ON_ERROR)]:null,['versao_id'=>$id,'entressafra_id'=>$season,'area_curva_id'=>$area,'redutores'=>$content],'Classificação manual das O.S. de Redutores; demais programadas permanecem em Bombas / Demais.');
+            Access::audit($actor,'mecanica_bombas_classificacao',null,$old?['versao_id'=>(int)$old['id'],'grupo_manual'=>$old['grupo_manual']??'redutores','ordens'=>json_decode($old['conteudo'],true,512,JSON_THROW_ON_ERROR)]:null,['versao_id'=>$id,'entressafra_id'=>$season,'area_curva_id'=>$area,'grupo_manual'=>'bombas','bombas'=>$content],'Classificação manual das O.S. de Bombas; demais programadas permanecem em Redutores.');
             return $id;
         });
     }

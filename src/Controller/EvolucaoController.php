@@ -185,15 +185,21 @@ class EvolucaoController extends OperacaoController
     }
     public function redutores()
     {
+        $this->request->allowMethod(['get']);Access::admin($this->currentUser);
+        return $this->redirect(['action'=>'bombas','?'=>$this->request->getQueryParams()]);
+    }
+    public function bombas()
+    {
         $this->request->allowMethod(['get','post']);Access::admin($this->currentUser);
         [$season]=$this->context(new Evolucao());$service=new \App\Service\CurvaMecanica();
         $selectedArea=$this->request->getQuery('area_id','');
         if(!is_string($selectedArea)||!ctype_digit($selectedArea)||!$service->isMechanical($season,(int)$selectedArea))throw new \Cake\Http\Exception\BadRequestException('Selecione MECÂNICA na entressafra atual.');
         $area=(int)$selectedArea;$orders=$service->orders($season,$area);$versions=$service->versions($season,$area);
-        $base=(int)($versions[0]['id']??0);$selected=$service->redutorIds($season,$area);$pasted='';$errors=[];
+        $base=(int)($versions[0]['id']??0);$selected=$service->bombaIds($season,$area);$pasted='';$errors=[];
         if($this->request->is('post')){
             try{
                 $data=$this->request->getData();
+                if(($data['grupo_manual']??null)!=='bombas')throw new \DomainException('Esta tela usa uma regra antiga. Recarregue Gerenciar O.S. de Bombas antes de salvar.');
                 if(($data['lista_completa']??null)!=='1')throw new \DomainException('O envio da lista ficou incompleto. Recarregue a página antes de salvar.');
                 if(!is_string($data['selecao_json']??''))throw new \DomainException('Seleção de O.S. inválida.');
                 if(($data['selecao_json']??'')!==''){
@@ -203,8 +209,8 @@ class EvolucaoController extends OperacaoController
                 if(!is_array($data['ordens']??[])||!is_string($data['lista']??'')||!is_scalar($data['base']??null)||!ctype_digit((string)$data['base']))throw new \DomainException('Seleção de O.S. inválida.');
                 $pasted=$data['lista']??'';$selected=array_values(array_filter($data['ordens']??[],fn($id)=>is_scalar($id)&&ctype_digit((string)$id)));
                 $service->save((int)$this->currentUser->id,$season,$area,$data['ordens']??[],$pasted,(int)$data['base']);
-                $this->Flash->success('Lista de Redutores salva. As curvas foram recalculadas sem alterar os lançamentos.');
-                return $this->redirect(['action'=>'controle','?'=>['entressafra_id'=>$season,'area_id'=>$area,'grupo'=>'redutores']]);
+                $this->Flash->success('Lista de Bombas salva. As curvas foram recalculadas sem alterar os lançamentos.');
+                return $this->redirect(['action'=>'controle','?'=>['entressafra_id'=>$season,'area_id'=>$area,'grupo'=>'bombas']]);
             }catch(\DomainException $e){$errors=explode("\n",$e->getMessage());$base=(int)($this->request->getData('base')??0);}
         }
         $counts=$service->counts($season,$area);$selected=array_map('intval',$selected);

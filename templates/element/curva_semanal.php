@@ -29,9 +29,9 @@ $path=static function($key)use($sets,$x,$y){$segments=[];$connected=false;foreac
 <?php foreach(\App\Service\CurvaMecanica::GROUPS as $value=>$label): ?><label class="d-block"><input type="radio" name="grupo" value="<?= h($value) ?>" <?= $weekly['group']===$value?'checked':'' ?>> <?= h($label) ?></label><?php endforeach; ?>
 </fieldset><button class="btn btn-primary btn-sm mt-2" type="submit">Selecionar curva</button>
 </form>
-<p class="text-secondary mt-2 mb-2">Classificação atual: <?= h($weekly['group_counts']['redutores']) ?> O.S. em Redutores · <?= h($weekly['group_counts']['bombas']) ?> em Bombas / Demais · <?= h($weekly['group_counts']['geral']) ?> na Mecânica Geral.</p>
-<?php if($currentUser->perfil==='ADMIN_PCM'): ?><?= $this->Html->link('Gerenciar O.S. de Redutores',['action'=>'redutores','?'=>['entressafra_id'=>$season,'area_id'=>$area]],['class'=>'btn btn-outline-primary btn-sm']) ?><?php endif; ?>
-<p class="text-secondary mt-2 mb-0">Somente O.S. relacionadas manualmente entram em Redutores. As demais programadas entram em Bombas / Demais. O calendário operacional é compartilhado pela Mecânica.</p>
+<p class="text-secondary mt-2 mb-2">Classificação atual: <?= h($weekly['group_counts']['redutores']) ?> O.S. em Redutores · <?= h($weekly['group_counts']['bombas']) ?> em Bombas · <?= h($weekly['group_counts']['geral']) ?> na Mecânica Geral.</p>
+<?php if($currentUser->perfil==='ADMIN_PCM'): ?><?= $this->Html->link('Gerenciar O.S. de Bombas',['action'=>'bombas','?'=>['entressafra_id'=>$season,'area_id'=>$area]],['class'=>'btn btn-outline-primary btn-sm']) ?><?php endif; ?>
+<p class="text-secondary mt-2 mb-0">Somente O.S. relacionadas manualmente entram em Bombas. As demais programadas entram em Redutores. O calendário operacional é compartilhado pela Mecânica.</p>
 </div>
 <?php endif; ?>
 <?php if(!$simulated): ?>
@@ -45,7 +45,7 @@ $path=static function($key)use($sets,$x,$y){$segments=[];$connected=false;foreac
 <p class="text-secondary">Sem data: evolução dinâmica até hoje. Quinzenas de 15 dias, com período final reduzido em dezembro. Os lançamentos continuam semanais.</p>
 </form>
 <?php if($weekly['cutoff']??null): ?><p class="curve-warning">Consulta histórica em <?= h($date($weekly['cutoff'])) ?>, até 23:59:59 de Brasília. Percentuais reconstruídos pelas revisões persistidas até o corte. Classificação das O.S. e planejamento usam os cadastros atuais; alterações posteriores nesses cadastros podem mudar a comparação.</p><?php endif; ?>
-<?php if(($weekly['mechanical']??false)&&($weekly['cutoff']??null)): ?><p class="curve-reference">A divisão Redutores / Bombas utiliza a última classificação salva até o corte. Antes da primeira versão, nenhuma O.S. estava relacionada a Redutores. A classificação principal do setor e o calendário continuam sujeitos à limitação dos cadastros atuais indicada acima.</p><?php endif; ?>
+<?php if(($weekly['mechanical']??false)&&($weekly['cutoff']??null)): ?><p class="curve-reference">A divisão Bombas / Redutores respeita a regra de cada versão até o corte. Listas antigas de Redutores preservam seu significado. Sem classificação registrada, Bombas está vazio e as demais programadas estão em Redutores. A classificação principal do setor e o calendário continuam sujeitos à limitação dos cadastros atuais indicada acima.</p><?php endif; ?>
 <?php if($weekly['not_started']??false): ?><p class="curve-warning">Setor ainda não iniciado · início previsto em <?= h($date($weekly['operational_start'])) ?>.</p><?php endif; ?>
 <?php endif; ?>
 <div class="curve-heading"><div><div class="curve-kicker">Controle de entressafra</div><h2>Curva S — <?= h($areaName) ?></h2><?php if($simulated): ?><p class="curve-simulation-mark">SIMULAÇÃO — DADOS FICTÍCIOS</p><?php endif; ?><p class="curve-subtitle">Programado automático — modelo histórico · referência estimada</p></div></div>

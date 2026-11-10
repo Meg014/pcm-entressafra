@@ -61,28 +61,28 @@ class CurvaSemanalTest extends TestCase
         $id=$service->save($this->admin,$this->season,$this->area,[$this->orders[0],$this->orders[2]],'',0);
         $this->assertGreaterThan(0,$id);$this->assertSame(['redutores'=>2,'bombas'=>2,'geral'=>4],$service->counts($this->season,$this->area));
         $curve=new \App\Service\Curva();$red=$curve->report($this->season,(string)$this->area,'',1,false,'redutores');$pumps=$curve->report($this->season,(string)$this->area,'',1,false,'bombas');
-        $this->assertSame(75.0,$red['metrics']['simples']);$this->assertSame(50.0,$pumps['metrics']['simples']);
+        $this->assertSame(50.0,$red['metrics']['simples']);$this->assertSame(75.0,$pumps['metrics']['simples']);
         $redIds=array_column($red['details'],'id');$pumpIds=array_column($pumps['details'],'id');
         $this->assertSame([],array_intersect($redIds,$pumpIds));$this->assertCount(4,array_unique([...$redIds,...$pumpIds]));
         $this->assertSame(62.5,$curve->report($this->season,(string)$this->area)['metrics']['simples']);
         $this->assertSame($records,$db->execute('SELECT * FROM evolucao_registros ORDER BY id')->fetchAll('assoc'));
         $this->record($this->orders[0],0,2,'2026-11-10 10:00:00');
         $now=new \DateTimeImmutable('2026-11-10T12:00:00-03:00');
-        $report=(new CurvaSemanal())->report($this->season,$this->area,$now,null,'automatica','redutores');
+        $report=(new CurvaSemanal())->report($this->season,$this->area,$now,null,'automatica','bombas');
         $this->assertSame(25.0,$report['latest']['realizado']);$this->assertSame(2,$report['group_count']);
-        $this->assertSame(50.0,(new CurvaSemanal())->report($this->season,$this->area,$now,null,'automatica','bombas')['latest']['realizado']);
+        $this->assertSame(50.0,(new CurvaSemanal())->report($this->season,$this->area,$now,null,'automatica','redutores')['latest']['realizado']);
     }
-    public function testMechanicalRemovalReturnsOrderToPumpsAndAuditsWholeVersions(): void
+    public function testMechanicalRemovalReturnsOrderToRedutoresAndAuditsWholeVersions(): void
     {
         $service=$this->mechanical();$base=$service->save($this->admin,$this->season,$this->area,[],'000001, 000003',0);
         $next=$service->save($this->admin,$this->season,$this->area,[$this->orders[2]],'',$base);
-        $this->assertGreaterThan($base,$next);$this->assertSame([$this->orders[2]],$service->redutorIds($this->season,$this->area));
-        $this->assertSame(['redutores'=>1,'bombas'=>3,'geral'=>4],$service->counts($this->season,$this->area));
+        $this->assertGreaterThan($base,$next);$this->assertSame([$this->orders[2]],$service->bombaIds($this->season,$this->area));
+        $this->assertSame(['redutores'=>3,'bombas'=>1,'geral'=>4],$service->counts($this->season,$this->area));
         $versions=$service->versions($this->season,$this->area);$this->assertCount(2,$versions);
         $content=json_decode($versions[1]['conteudo'],true,512,JSON_THROW_ON_ERROR);
         $this->assertSame('000001',$content[0]['os_numero']);$this->assertSame('01',$content[0]['os_filial']);
         $this->assertSame($this->season,$content[0]['entressafra_id']);
-        $this->assertSame(2,Access::table('Auditorias')->find()->where(['acao'=>'mecanica_redutores_classificacao'])->count());
+        $this->assertSame(2,Access::table('Auditorias')->find()->where(['acao'=>'mecanica_bombas_classificacao'])->count());
         $this->assertSame($next,$service->save($this->admin,$this->season,$this->area,[$this->orders[2]],'',$next));
         $this->assertCount(2,$service->versions($this->season,$this->area));
     }
@@ -93,8 +93,8 @@ class CurvaSemanalTest extends TestCase
         catch(\DomainException $e){$this->assertStringContainsString('ambígua',$e->getMessage());}
         $this->assertNull($service->version($this->season,$this->area));
         $id=$service->save($this->admin,$this->season,$this->area,[],'01/000001; 01/000002',0);
-        $this->assertSame([$this->orders[0],$this->orders[1]],$service->redutorIds($this->season,$this->area));
-        $this->assertNotContains($otherBranch,$service->redutorIds($this->season,$this->area));
+        $this->assertSame([$this->orders[0],$this->orders[1]],$service->bombaIds($this->season,$this->area));
+        $this->assertNotContains($otherBranch,$service->bombaIds($this->season,$this->area));
         try{$service->save($this->admin,$this->season,$this->area,[],'1',$id);$this->fail('Zeros descartados.');}
         catch(\DomainException $e){$this->assertStringContainsString('Não encontrada',$e->getMessage());}
         $this->assertSame($id,(int)$service->version($this->season,$this->area)['id']);
@@ -110,22 +110,22 @@ class CurvaSemanalTest extends TestCase
         try{$service->save($this->admin,$this->season,$this->area,[],'000001;900001;900002;999999',0);$this->fail('Lista inválida aceita.');}
         catch(\DomainException $e){foreach(['900001','900002','999999'] as $number)$this->assertStringContainsString($number,$e->getMessage());}
         $this->assertNull($service->version($this->season,$this->area));
-        $this->assertSame(4,$service->counts($this->season,$this->area)['bombas']);
+        $this->assertSame(4,$service->counts($this->season,$this->area)['redutores']);
     }
     public function testMechanicalHistoricalMembershipAndPercentagesIgnoreLaterChanges(): void
     {
         $service=$this->mechanical();$db=Access::table('Atividades')->getConnection();$order=Access::table('Atividades')->get($this->orders[0]);
         $content=[['atividade_id'=>$this->orders[0],'entressafra_id'=>$this->season,'os_filial'=>$order->os_filial,'os_chave'=>$order->os_chave,'os_numero'=>$order->os_numero]];
-        $db->insert('mecanica_curva_versoes',['entressafra_id'=>$this->season,'area_curva_id'=>$this->area,'usuario_id'=>$this->admin,'usuario_nome'=>'ADMIN_PCM','conteudo'=>json_encode($content,JSON_THROW_ON_ERROR),'created'=>'2026-11-09 10:00:00']);
+        $db->insert('mecanica_curva_versoes',['entressafra_id'=>$this->season,'area_curva_id'=>$this->area,'usuario_id'=>$this->admin,'usuario_nome'=>'ADMIN_PCM','conteudo'=>json_encode($content,JSON_THROW_ON_ERROR),'grupo_manual'=>'bombas','created'=>'2026-11-09 10:00:00']);
         $base=(int)$service->version($this->season,$this->area)['id'];$now=new \DateTimeImmutable('2026-11-10T12:00:00-03:00');$curve=new CurvaSemanal();
-        $historic=$curve->report($this->season,$this->area,$now,'2026-11-09','automatica','redutores');
+        $historic=$curve->report($this->season,$this->area,$now,'2026-11-09','automatica','bombas');
         $this->assertSame(100.0,$historic['latest']['realizado']);
         $service->save($this->admin,$this->season,$this->area,[$this->orders[1]],'',$base);
         $this->record($this->orders[0],5,2,'2026-11-10 10:00:00');
-        $this->assertSame($historic,$curve->report($this->season,$this->area,$now,'2026-11-09','automatica','redutores'));
-        $this->assertSame(80.0,$curve->report($this->season,$this->area,$now,null,'automatica','redutores')['latest']['realizado']);
-        $this->assertSame(50.0,$curve->report($this->season,$this->area,$now,'2026-11-09','automatica','bombas')['latest']['realizado']);
-        $beforeFirst=$curve->report($this->season,$this->area,$now,'2026-11-08','automatica','redutores');
+        $this->assertSame($historic,$curve->report($this->season,$this->area,$now,'2026-11-09','automatica','bombas'));
+        $this->assertSame(80.0,$curve->report($this->season,$this->area,$now,null,'automatica','bombas')['latest']['realizado']);
+        $this->assertSame(50.0,$curve->report($this->season,$this->area,$now,'2026-11-09','automatica','redutores')['latest']['realizado']);
+        $beforeFirst=$curve->report($this->season,$this->area,$now,'2026-11-08','automatica','bombas');
         $this->assertSame(0,$beforeFirst['group_count']);$this->assertNull($beforeFirst['latest']['realizado']);
     }
     public function testMechanicalClassificationIsAdminOnlyAndRejectsStaleSelection(): void
@@ -138,12 +138,51 @@ class CurvaSemanalTest extends TestCase
         catch(\DomainException $e){$this->assertStringContainsString('outra pessoa',$e->getMessage());}
         $this->assertSame($id,(int)$service->version($this->season,$this->area)['id']);
     }
+    public function testMechanicalLegacyRedutoresAreNotReinterpretedAsBombas(): void
+    {
+        $service=$this->mechanical();$db=Access::table('Atividades')->getConnection();$order=Access::table('Atividades')->get($this->orders[0]);
+        $content=json_encode([['atividade_id'=>$this->orders[0],'entressafra_id'=>$this->season,'os_filial'=>$order->os_filial,'os_chave'=>$order->os_chave,'os_numero'=>$order->os_numero]],JSON_THROW_ON_ERROR);
+        $db->insert('mecanica_curva_versoes',['entressafra_id'=>$this->season,'area_curva_id'=>$this->area,'usuario_id'=>$this->admin,'usuario_nome'=>'Admin legado','conteudo'=>$content,'created'=>'2026-11-09 12:00:00']);
+        $legacy=$service->version($this->season,$this->area);
+        $this->assertSame('redutores',$legacy['grupo_manual']);
+        $this->assertSame([$this->orders[0]],$service->redutorIds($this->season,$this->area));
+        $this->assertSame(array_slice($this->orders,1),$service->bombaIds($this->season,$this->area));
+        $url='/curva-s/bombas?area_id='.$this->area;$this->get($url);$this->assertResponseOk();$this->assertResponseContains('regra antiga de Redutores');
+        $doc=new \DOMDocument();@$doc->loadHTML((string)$this->_response->getBody());$xp=new \DOMXPath($doc);
+        $checked=[];foreach($xp->query('//input[@name="ordens[]" and @checked]') as $input)$checked[]=(int)$input->getAttribute('value');
+        $this->assertSame(array_slice($this->orders,1),$checked);
+        // Saving the preselected complement preserves all memberships and creates an explicit Bombas version.
+        $next=$service->save($this->admin,$this->season,$this->area,$checked,'',(int)$legacy['id']);
+        $this->assertGreaterThan((int)$legacy['id'],$next);$this->assertSame('bombas',$service->version($this->season,$this->area)['grupo_manual']);
+        $this->assertSame([$this->orders[0]],$service->redutorIds($this->season,$this->area));
+        $this->assertSame($legacy,$service->versions($this->season,$this->area)[1]);
+        $audit=Access::table('Auditorias')->find()->where(['acao'=>'mecanica_bombas_classificacao'])->firstOrFail();
+        $this->assertSame('redutores',json_decode($audit->antes,true,512,JSON_THROW_ON_ERROR)['grupo_manual']);
+        // Same JSON as a legacy selection must still create a new version with the new meaning.
+        $service->save($this->admin,$this->season,$this->area,[$this->orders[0]],'',$next);
+        $this->assertSame([$this->orders[0]],$service->bombaIds($this->season,$this->area));
+        $this->assertSame([$this->orders[0]],$service->redutorIds($this->season,$this->area,'2026-11-10 02:59:59'));
+    }
+    public function testMechanicalEmptyBombasAndStaleFormsCannotInvertAssignments(): void
+    {
+        $service=$this->mechanical();$this->assertSame(['redutores'=>4,'bombas'=>0,'geral'=>4],$service->counts($this->season,$this->area));
+        $url='/curva-s/bombas?area_id='.$this->area;
+        $this->post($url,['base'=>'0','ordens'=>[$this->orders[0]],'lista_completa'=>'1']);$this->assertResponseOk();$this->assertResponseContains('regra antiga');
+        $this->assertNull($service->version($this->season,$this->area));
+        $this->get('/curva-s/redutores?area_id='.$this->area);$this->assertResponseCode(302);
+        $this->post('/curva-s/redutores?area_id='.$this->area,['base'=>'0','ordens'=>[$this->orders[0]],'lista_completa'=>'1']);
+        $this->assertGreaterThanOrEqual(400,$this->_response->getStatusCode());
+        $this->assertNull($service->version($this->season,$this->area));
+        $base=$service->save($this->admin,$this->season,$this->area,[$this->orders[0]],'',0);
+        $service->save($this->admin,$this->season,$this->area,[],'',$base);
+        $this->assertSame(['redutores'=>4,'bombas'=>0,'geral'=>4],$service->counts($this->season,$this->area));
+    }
     public function testMechanicalGroupDoesNotUseGeneralPublishedSnapshotsOrChangeOtherSectors(): void
     {
         $service=$this->mechanical();$curve=new CurvaSemanal();$snapshot=$curve->close($this->admin,$this->season,$this->area,'2026-10-27');$published=$this->content($snapshot);
         $service->save($this->admin,$this->season,$this->area,[$this->orders[0]],'',0);
         $now=new \DateTimeImmutable('2026-11-10T12:00:00-03:00');
-        $red=$curve->report($this->season,$this->area,$now,null,'semanal','redutores');
+        $red=$curve->report($this->season,$this->area,$now,null,'semanal','bombas');
         $this->assertSame(100.0,$red['points'][1]['realizado']);$this->assertNull($red['points'][1]['versao_id']);
         $this->assertSame($published,$this->content($snapshot));
         $this->assertSame(62.5,$curve->report($this->season,$this->area,$now,null,'semanal','geral')['latest']['realizado']);
@@ -152,17 +191,17 @@ class CurvaSemanalTest extends TestCase
     }
     public function testMechanicalHttpManagementFiltersAndReadonlyPermissions(): void
     {
-        $this->mechanical();$url='/curva-s/redutores?area_id='.$this->area;
-        $this->get($url);$this->assertResponseOk();$this->assertResponseContains('Gerenciar O.S. de Redutores');$this->assertResponseContains('000001');
-        if(getenv('CURVA_MECANICA_PREVIEW'))file_put_contents(TMP.'mecanica-redutores-preview.html',(string)$this->_response->getBody());
-        $this->post($url,['base'=>'0','ordens'=>[$this->orders[0]],'lista'=>'000003','lista_completa'=>'1']);$this->assertResponseCode(302);
+        $this->mechanical();$url='/curva-s/bombas?area_id='.$this->area;
+        $this->get($url);$this->assertResponseOk();$this->assertResponseContains('Gerenciar O.S. de Bombas');$this->assertResponseContains('000001');
+        if(getenv('CURVA_MECANICA_PREVIEW'))file_put_contents(TMP.'mecanica-bombas-preview.html',(string)$this->_response->getBody());
+        $this->post($url,['base'=>'0','ordens'=>[$this->orders[0]],'lista'=>'000003','lista_completa'=>'1','grupo_manual'=>'bombas']);$this->assertResponseCode(302);
         $this->get('/controle-pcm?area_id='.$this->area.'&grupo=redutores&exibicao=automatica&corte=2026-11-09');$this->assertResponseOk();$this->assertResponseContains('data-mechanical-curves');$this->assertResponseContains('Mecânica — Redutores');$this->assertResponseContains('name="grupo"');
-        $this->get('/controle-pcm?area_id='.$this->area.'&grupo=bombas');$this->assertResponseOk();$this->assertResponseContains('Mecânica — Bombas / Demais');
+        $this->get('/controle-pcm?area_id='.$this->area.'&grupo=bombas');$this->assertResponseOk();$this->assertResponseContains('Mecânica — Bombas');
         if(getenv('CURVA_MECANICA_PREVIEW'))file_put_contents(TMP.'curva-mecanica-preview.html',(string)$this->_response->getBody());
         $this->get('/controle-pcm?area_id='.$this->other.'&grupo=redutores');$this->assertResponseOk();$this->assertResponseNotContains('data-mechanical-curves');
         $this->auth($this->pcm);$this->get($url);$this->assertResponseCode(403);
-        $this->post($url,['base'=>'0','ordens'=>[],'lista'=>'','lista_completa'=>'1']);$this->assertResponseCode(403);
-        $this->get('/controle-pcm?area_id='.$this->area.'&grupo=redutores');$this->assertResponseOk();$this->assertResponseNotContains('Gerenciar O.S. de Redutores');
+        $this->post($url,['base'=>'0','ordens'=>[],'lista'=>'','lista_completa'=>'1','grupo_manual'=>'bombas']);$this->assertResponseCode(403);
+        $this->get('/controle-pcm?area_id='.$this->area.'&grupo=redutores');$this->assertResponseOk();$this->assertResponseNotContains('Gerenciar O.S. de Bombas');
     }
     public function testMechanicalClassificationIsIsolatedBySeasonAndOrderIdentity(): void
     {
@@ -172,8 +211,8 @@ class CurvaSemanalTest extends TestCase
         $areas=Access::table('AreasFabrica');$area=(int)$areas->saveOrFail(Access::entity($areas,['nome'=>'MECANICA','entressafra_id'=>$season]))->id;
         $id=$this->duplicateOrder('000001','01',['entressafra_id'=>$season,'caderno_id'=>null,'area_curva_id'=>$area]);
         PeriodoContexto::set($season);
-        $this->assertSame(['redutores'=>0,'bombas'=>1,'geral'=>1],$service->counts($season,$area));
-        $service->save($this->admin,$season,$area,[$id],'',0);$this->assertSame([$id],$service->redutorIds($season,$area));
+        $this->assertSame(['redutores'=>1,'bombas'=>0,'geral'=>1],$service->counts($season,$area));
+        $service->save($this->admin,$season,$area,[$id],'',0);$this->assertSame([$id],$service->bombaIds($season,$area));
         try{$service->save($this->admin,$season,$area,[$this->orders[0]],'',(int)$service->version($season,$area)['id']);$this->fail('O.S. de outra entressafra aceita.');}
         catch(\DomainException $e){$this->assertStringContainsString('inválida',$e->getMessage());}
     }

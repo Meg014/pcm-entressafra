@@ -30,6 +30,15 @@ try{
     foreach([['2026-11-09 15:00:00',$members],['2026-11-10 15:00:00',[]]] as [$created,$content]){
         $db->insert('mecanica_curva_versoes',['entressafra_id'=>1,'area_curva_id'=>1,'usuario_id'=>1,'usuario_nome'=>'Teste isolado','conteudo'=>json_encode($content,JSON_THROW_ON_ERROR),'created'=>$created]);
     }
+    $legacy=$db->execute('SELECT * FROM mecanica_curva_versoes ORDER BY id')->fetchAll('assoc');
+    require dirname(__DIR__).'/config/Migrations/20261110130000_MecanicaListaManualBombas.php';
+    $upgrade=new MecanicaListaManualBombas(20261110130000);$upgrade->setAdapter(new PostgresAdapter(['connection'=>$db]));$upgrade->up();
+    $upgraded=$db->execute('SELECT * FROM mecanica_curva_versoes ORDER BY id')->fetchAll('assoc');
+    foreach($upgraded as $i=>$row){
+        if($row['grupo_manual']!=='redutores')throw new RuntimeException('Lista antiga reinterpretada como Bombas.');
+        unset($row['grupo_manual']);if($row!==$legacy[$i])throw new RuntimeException('Versão antiga alterada durante a migration.');
+    }
+    $db->insert('mecanica_curva_versoes',['entressafra_id'=>1,'area_curva_id'=>1,'usuario_id'=>1,'usuario_nome'=>'Teste isolado','conteudo'=>json_encode($members,JSON_THROW_ON_ERROR),'grupo_manual'=>'bombas','created'=>'2026-11-10 16:00:00']);
     $past=$db->execute('SELECT * FROM mecanica_curva_versoes WHERE entressafra_id=? AND area_curva_id=? AND created<=? ORDER BY id DESC LIMIT 1',[1,1,'2026-11-10 02:59:59'])->fetch('assoc');
     if(json_decode($past['conteudo'],true,512,JSON_THROW_ON_ERROR)!==$members)throw new RuntimeException('Histórico ou zeros à esquerda não preservados.');
     foreach(['UPDATE mecanica_curva_versoes SET conteudo=conteudo','DELETE FROM mecanica_curva_versoes'] as $sql){
@@ -39,11 +48,11 @@ try{
         finally{$db->rollback();}
     }
     $versions=$db->execute('SELECT COUNT(*) AS n FROM mecanica_curva_versoes')->fetch('assoc')['n'];
-    if((int)$versions!==2)throw new RuntimeException('Versões alteradas.');
+    if((int)$versions!==3)throw new RuntimeException('Versões alteradas.');
 }finally{
     ConnectionManager::drop('mecanica_validation');
     // Only this freshly created, validated scratch schema can be removed.
     $source->execute('DROP SCHEMA "'.$schema.'" CASCADE');
 }
 if($before!==$hashes())throw new RuntimeException('Tabelas existentes alteradas.');
-echo json_encode(['status'=>'OK','migration_postgresql'=>true,'corte_historico'=>true,'zeros_preservados'=>true,'update_delete_bloqueados'=>true,'esquema_isolado_removido'=>true,'tabelas_existentes_preservadas'=>count($tables)],JSON_UNESCAPED_UNICODE).PHP_EOL;
+echo json_encode(['status'=>'OK','migration_postgresql'=>true,'versoes_legadas_preservadas'=>true,'nova_lista_manual'=>'bombas','corte_historico'=>true,'zeros_preservados'=>true,'update_delete_bloqueados'=>true,'esquema_isolado_removido'=>true,'tabelas_existentes_preservadas'=>count($tables)],JSON_UNESCAPED_UNICODE).PHP_EOL;
