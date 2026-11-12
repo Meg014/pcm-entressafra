@@ -73,7 +73,8 @@ class FilaPcmController extends OperacaoController
                 if (($data['acao']??'')==='cancelar') {
                     Access::admin($this->currentUser);
                     if (($data['confirmar']??'')!=='1' || !is_string($data['motivo']??null) || !is_string($data['apontamento_id']??null) || !ctype_digit($data['apontamento_id']) || !is_string($data['revisao']??null) || !ctype_digit($data['revisao'])) { throw new \DomainException('Confirme o apontamento e informe a justificativa.'); }
-                    (new \App\Service\TimeEntries($this->totvs()))->change((int)$this->currentUser->id,(int)$data['apontamento_id'],'cancelar',$data['motivo'],(int)$id,(int)$data['revisao']);
+                    (new \App\Service\TimeEntries($this->totvs()))->change((int)$this->currentUser->id,(int)$data['apontamento_id'],'cancelar',$data['motivo'],(int)$id,(int)$data['revisao'],($data['ciencia_totvs']??'')==='1');
+                    if ($this->request->is('ajax')) { return $this->response->withType('application/json')->withStringBody(json_encode(['success'=>true],JSON_THROW_ON_ERROR)); }
                     $this->Flash->success('Apontamento cancelado com histórico preservado.');
                     return $this->redirect(['action'=>'view',$id,'?'=>array_diff_key($this->request->getQueryParams(),['cancelar'=>true]),'#'=>'horas']);
                 }
@@ -90,7 +91,10 @@ class FilaPcmController extends OperacaoController
                 $n=$service->$method((int)$this->currentUser->id,(int)$id,$selection,$data['acao']??'',$data['motivo']??'',($data['confirmar']??'')==='1');
                 $this->Flash->success($n.($category==='insumos'?' insumo(s)':' apontamento(s)').' atualizado(s). Nenhuma escrita foi feita no TOTVS.');
                 return $this->redirect(['action'=>'view',$id,'?'=>$this->request->getQueryParams(),'#'=>$category]);
-            }catch(\DomainException $e){$this->Flash->error($e->getMessage());}
+            }catch(\DomainException $e){
+                if ($this->request->is('ajax')) { return $this->response->withStatus(422)->withType('application/json')->withStringBody(json_encode(['error'=>$e->getMessage()],JSON_THROW_ON_ERROR)); }
+                $this->Flash->error($e->getMessage());
+            }
         }
         $rows=$this->paginate($this->fetchTable('Apontamentos')->find()->where(['atividade_id'=>(int)$id])->orderBy(['created'=>'ASC','id'=>'ASC']),['limit'=>10,'maxLimit'=>10]);
         [$supplies,$supplyPage,$supplyPages,$supplyTotal]=$this->sectionPage($this->fetchTable('Insumos')->find()->where(['atividade_id'=>(int)$id])->orderBy(['created'=>'ASC','id'=>'ASC']),'insumos_pagina',10);

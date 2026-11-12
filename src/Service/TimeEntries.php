@@ -224,7 +224,7 @@ final class TimeEntries
     {
         return 'Conflito de horário: '.implode('; ', array_map(static fn(array $c): string => $c['nome'].' · Matrícula '.$c['matricula'].' · '.$c['inicio'].' até '.$c['fim'].' · O.S. '.$c['os'], $error->conflicts));
     }
-    public function change(int $userId, int $id, string $action, string $reason, ?int $activityId=null, ?int $revision=null): void
+    public function change(int $userId, int $id, string $action, string $reason, ?int $activityId=null, ?int $revision=null, bool $totvsAcknowledged=false): void
     {
         $user = Access::actor($userId); Access::pcm($user);
         if ($action==='cancelar') { Access::admin($user); }
@@ -232,7 +232,7 @@ final class TimeEntries
         if (trim($reason) === '') { throw new \DomainException('Informe o motivo ou referência da confirmação.'); }
         if (!in_array($action, ['cancelar', 'pendente', 'conferido', 'lancado'], true)) { throw new \DomainException('Operação inválida.'); }
         $table = Access::table('Apontamentos');
-        $table->getConnection()->transactional(function () use ($user, $table, $id, $action, $reason, $activityId, $revision): void {
+        $table->getConnection()->transactional(function () use ($user, $table, $id, $action, $reason, $activityId, $revision, $totvsAcknowledged): void {
             if ($table->getConnection()->getDriver() instanceof \Cake\Database\Driver\Postgres) {
                 $season=Access::table('Atividades')->get($table->get($id)->atividade_id)->entressafra_id;
                 $table->getConnection()->execute('SELECT id FROM entressafras WHERE id=? FOR '.($action==='cancelar'?'UPDATE':'SHARE'),[(int)$season]);
@@ -247,7 +247,8 @@ final class TimeEntries
                 if ($revision!==null && (int)$row->revisao_pcm!==$revision) { throw new \DomainException('Registro alterado. Atualize a tela.'); }
             }
             if ($row->cancelado) { throw new \DomainException('Apontamento já cancelado.'); }
-            if($row->controle_pcm==='lancado' && $action!=='pendente') { throw new \DomainException('Reabra a confirmação com justificativa antes de alterar o apontamento.'); }
+            if ($action==='cancelar' && $row->controle_pcm==='lancado' && !$totvsAcknowledged) { throw new \DomainException('Confirme a ciência de que o TOTVS não será alterado.'); }
+            if($row->controle_pcm==='lancado' && !in_array($action,['pendente','cancelar'],true)) { throw new \DomainException('Reabra a confirmação com justificativa antes de alterar o apontamento.'); }
             $before = $row->toArray();
             if ($action === 'cancelar') { $row->cancelado = true; } else { $row->controle_pcm = $action; }
             $row->alterado_por = $user->id; $row->modified = gmdate('Y-m-d H:i:s');
@@ -255,7 +256,7 @@ final class TimeEntries
             if($action==='lancado'){$row->confirmado_por=$user->id;$row->confirmado_em=gmdate('Y-m-d H:i:s');}
             elseif($action==='pendente'){$row->confirmado_por=null;$row->confirmado_em=null;}
             $table->saveOrFail($row);
-            Access::audit($user, $action, $id, $before, $row->toArray(), $reason);
+            Access::audit($user, $action, $id, $before, $row->toArray()+($action==='cancelar'?['ciencia_totvs'=>$totvsAcknowledged]:[]), trim($reason));
         });
     }
 }

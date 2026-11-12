@@ -1,22 +1,18 @@
-<?php if ($cancelEntry && $currentUser->perfil==='ADMIN_PCM'): ?>
-<section class="panel mb-4" id="cancelamento">
-<h2>Excluir apontamento #<?= h($cancelEntry->id) ?></h2>
-<p><strong>O.S.:</strong> <?= h($activity->os_numero) ?> · <strong>Funcionário:</strong> <?= h($cancelEntry->funcionario_nome) ?> (<?= h($cancelEntry->funcionario_matricula) ?>)</p>
-<p><strong>Data do serviço:</strong> <?= h($cancelEntry->inicio->setTimezone('America/Sao_Paulo')->format('d/m/Y')) ?></p>
-<?= $this->element('entry_periods',['entry'=>$cancelEntry]) ?>
-<p class="text-break"><strong>Descrição do serviço:</strong> <?= h($cancelEntry->descricao) ?></p>
-<?php if ($cancelEntry->cancelado): ?><p>Apontamento já cancelado.</p>
-<?php elseif ($cancelEntry->controle_pcm==='lancado'): ?><p>Cancelamento bloqueado: lançamento manual no TOTVS confirmado. É necessária conferência e reabertura justificada da confirmação antes do cancelamento. Esta operação não desfaz lançamentos no TOTVS.</p>
-<?php else: ?>
-<p>O cancelamento preserva o histórico e retira estas horas dos totais operacionais. Nenhuma alteração será realizada no TOTVS.</p>
-<?= $this->Form->create(null) ?>
+<?php if ($currentUser->perfil==='ADMIN_PCM'): ?>
+<dialog id="cancel-entry-dialog" aria-labelledby="cancel-entry-title" style="width:min(440px,calc(100% - 24px));border:1px solid #ddd;border-radius:14px;padding:22px;max-height:90vh;overflow:auto">
+<h2 id="cancel-entry-title" class="h5">Excluir apontamento</h2>
+<p><strong>O.S. <?= h($activity->os_numero) ?></strong></p>
+<div id="cancel-entry-details" class="small mb-3"></div>
+<?= $this->Form->create(null,['id'=>'cancel-entry-form']) ?>
 <?= $this->Form->hidden('acao',['value'=>'cancelar']) ?>
-<?= $this->Form->hidden('apontamento_id',['value'=>$cancelEntry->id]) ?>
-<?= $this->Form->hidden('revisao',['value'=>$cancelEntry->revisao_pcm]) ?>
-<?= $this->Form->control('motivo',['type'=>'textarea','label'=>'Justificativa da exclusão','required'=>true,'maxlength'=>3000,'class'=>'form-control']) ?>
-<?= $this->Form->control('confirmar',['type'=>'checkbox','value'=>'1','label'=>'Confirmo o cancelamento deste apontamento.','required'=>true]) ?>
-<?= $this->Form->button('Confirmar exclusão',['class'=>'btn btn-danger btn-sm mt-2']) ?>
+<?= $this->Form->hidden('confirmar',['value'=>'1']) ?>
+<?= $this->Form->hidden('apontamento_id',['value'=>'','id'=>'cancel-entry-id']) ?>
+<?= $this->Form->hidden('revisao',['value'=>'','id'=>'cancel-entry-revision']) ?>
+<div id="cancel-entry-warning" class="alert alert-warning small" hidden>Este apontamento está marcado como lançado manualmente no TOTVS. A exclusão neste sistema não remove o lançamento realizado no TOTVS.</div>
+<?= $this->Form->control('motivo',['type'=>'textarea','label'=>'Motivo da exclusão','required'=>true,'maxlength'=>3000,'rows'=>3,'class'=>'form-control','id'=>'cancel-entry-reason']) ?>
+<label id="cancel-entry-ack" class="small my-3" hidden><input type="checkbox" name="ciencia_totvs" value="1"> Estou ciente de que o TOTVS não será alterado.</label>
+<p id="cancel-entry-error" class="text-danger small" role="alert"></p>
+<div class="d-flex justify-content-end gap-2 mt-3"><button type="button" class="btn btn-light" data-cancel-close>Cancelar</button><button type="submit" class="btn btn-danger">Confirmar exclusão</button></div>
 <?= $this->Form->end() ?>
-<?php endif; ?>
-</section>
+</dialog>
 <?php endif; ?>

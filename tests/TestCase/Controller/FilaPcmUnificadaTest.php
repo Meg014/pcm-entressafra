@@ -470,7 +470,7 @@ class FilaPcmUnificadaTest extends TestCase
     {
         $id=$this->hours();$other=$this->hours(0,'pessoa-2');$supplies=$this->supplies();
         $t=Access::table('Apontamentos');$before=$t->get($id)->toArray();$otherBefore=$t->get($other)->toArray();$supplyBefore=Access::table('Insumos')->get($supplies[0])->toArray();
-        $this->get('/fila-pcm/os/'.$this->activities[0].'?cancelar='.$id);$this->assertResponseOk();$this->assertResponseContains('Justificativa da exclusão');$this->assertResponseContains('Serviço de teste 0');
+        $this->get('/fila-pcm/os/'.$this->activities[0].'?cancelar='.$id);$this->assertResponseOk();$this->assertResponseContains('Motivo da exclusão');$this->assertResponseContains('Serviço de teste 0');
         $data=['acao'=>'cancelar','apontamento_id'=>(string)$id,'revisao'=>(string)$before['revisao_pcm'],'confirmar'=>'1','motivo'=>'Registro incorreto'];
         $this->post('/fila-pcm/os/'.$this->activities[0],$data);$this->assertRedirect();
         $row=$t->get($id);$this->assertTrue($row->cancelado);$this->assertSame($this->admin,(int)$row->alterado_por);
@@ -498,4 +498,29 @@ class FilaPcmUnificadaTest extends TestCase
         (new FilaPcm())->confirm($this->admin,$this->activities[0],$this->selection([$id],'Apontamentos'),'lancado','',true);
         try{$service->change($this->admin,$id,'cancelar','Erro',$this->activities[0]);$this->fail('TOTVS confirmado');}catch(\DomainException $e){$this->assertFalse(Access::table('Apontamentos')->get($id)->cancelado);}
         $this->assertSame(0,Access::table('Auditorias')->find()->where(['apontamento_id'=>$id,'acao'=>'cancelar'])->count());
-    }}
+    }
+
+    public function testConfirmedCancellationRequiresAcknowledgementAndPreservesConfirmation(): void
+    {
+        $id=$this->hours();$other=$this->hours(0,'pessoa-2');$supplies=$this->supplies();
+        (new FilaPcm())->confirm($this->admin,$this->activities[0],$this->selection([$id],'Apontamentos'),'lancado','',true);
+        $table=Access::table('Apontamentos');$before=$table->get($id)->toArray();
+        $otherBefore=$table->get($other)->toArray();$supplyBefore=Access::table('Insumos')->get($supplies[0])->toArray();
+        $data=['acao'=>'cancelar','apontamento_id'=>(string)$id,'revisao'=>(string)$before['revisao_pcm'],'confirmar'=>'1','motivo'=>'Exclusão conferida'];
+        $url='/fila-pcm/os/'.$this->activities[0];
+        $this->get($url);$this->assertResponseOk();$this->assertResponseContains('data-cancel-entry="'.$id.'"');
+        $this->assertEquals($before,$table->get($id)->toArray());
+        $this->replaceRequest(['headers'=>['X-Requested-With'=>'XMLHttpRequest']]);$this->post($url,$data);$this->assertResponseCode(422);$this->assertFalse($table->get($id)->cancelado);
+        $data['ciencia_totvs']='1';
+        $this->replaceRequest(['headers'=>['X-Requested-With'=>'XMLHttpRequest']]);$this->post($url,array_replace($data,['motivo'=>'   ']));$this->assertResponseCode(422);$this->assertFalse($table->get($id)->cancelado);
+        $this->replaceRequest(['headers'=>['X-Requested-With'=>'XMLHttpRequest']]);$this->post($url,$data);$this->assertResponseOk();$this->assertResponseContains('"success":true');
+        $row=$table->get($id);$this->assertTrue($row->cancelado);
+        foreach(['controle_pcm','confirmado_por','confirmado_em','snapshot','minutos','inicio','fim','descricao'] as $field)$this->assertEquals($before[$field],$row->get($field));
+        $this->assertEquals($otherBefore,$table->get($other)->toArray());$this->assertEquals($supplyBefore,Access::table('Insumos')->get($supplies[0])->toArray());
+        $audits=Access::table('Auditorias');$this->assertSame(1,$audits->find()->where(['apontamento_id'=>$id,'acao'=>'confirmacao_totvs'])->count());
+        $audit=$audits->find()->where(['apontamento_id'=>$id,'acao'=>'cancelar'])->firstOrFail();
+        $this->assertTrue(json_decode($audit->depois,true)['ciencia_totvs']);
+        $this->replaceRequest(['headers'=>['X-Requested-With'=>'XMLHttpRequest']]);$this->post($url,$data);$this->assertResponseCode(422);$this->assertSame(1,$audits->find()->where(['apontamento_id'=>$id,'acao'=>'cancelar'])->count());
+        $this->get($url);$this->assertResponseOk();$this->assertResponseNotContains('data-cancel-entry="'.$id.'"');
+    }
+}
