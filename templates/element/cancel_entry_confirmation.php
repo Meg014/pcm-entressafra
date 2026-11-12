@@ -3,7 +3,7 @@
 <h2 id="cancel-entry-title" class="h5">Excluir apontamento</h2>
 <p><strong>O.S. <?= h($activity->os_numero) ?></strong></p>
 <div id="cancel-entry-details" class="small mb-3"></div>
-<?= $this->Form->create(null,['id'=>'cancel-entry-form']) ?>
+<?= $this->Form->create(null,['id'=>'cancel-entry-form','url'=>['controller'=>'FilaPcm','action'=>'cancelEntry',$activity->id,'_method'=>'POST']]) ?>
 <?= $this->Form->hidden('acao',['value'=>'cancelar']) ?>
 <?= $this->Form->hidden('confirmar',['value'=>'1']) ?>
 <?= $this->Form->hidden('apontamento_id',['value'=>'','id'=>'cancel-entry-id']) ?>

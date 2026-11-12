@@ -37,4 +37,4 @@ $quantity=static fn($value):string=>str_replace('.',',',str_contains((string)$va
 <p class="small text-secondary">As confirmações são independentes por categoria e registram somente o lançamento manual no TOTVS. Nenhuma escrita automática é realizada.</p>
 <?= $this->Html->link('Evolução e histórico da O.S.',['controller'=>'Evolucao','action'=>'historico',$activity->id]) ?>
 
-<?php if($admin): ?><?= $this->Html->script('cancel-entry.js',['block'=>true]) ?><?php endif; ?>
+<?php if($admin): ?><?= $this->Html->script('cancel-entry.js?v='.filemtime(WWW_ROOT.'js/cancel-entry.js'),['block'=>true]) ?><?php endif; ?>

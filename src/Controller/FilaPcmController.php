@@ -64,6 +64,28 @@ class FilaPcmController extends OperacaoController
             return $this->redirect(['action'=>'index','?'=>['excluir_os'=>(int)$id]+$this->queueQuery()]);
         }
     }
+    public function cancelEntry($id)
+    {
+        $this->request->allowMethod(['post']);
+        Access::admin($this->currentUser);
+        $activity=$this->activity((int)$id);
+        $data=$this->request->getData();
+        if (($data['confirmar']??'')!=='1' || !is_string($data['motivo']??null) ||
+            !is_string($data['apontamento_id']??null) || !ctype_digit($data['apontamento_id']) || (int)$data['apontamento_id']<1 ||
+            !is_string($data['revisao']??null) || !ctype_digit($data['revisao'])) {
+            throw new \DomainException('Confirme o apontamento e informe a justificativa.');
+        }
+        $table=$this->fetchTable('Apontamentos');
+        $entry=$table->find()->where(['id'=>(int)$data['apontamento_id'],'atividade_id'=>(int)$activity->id])->firstOrFail();
+        (new \App\Service\TimeEntries($this->totvs()))->change((int)$this->currentUser->id,(int)$entry->id,
+            'cancelar',$data['motivo'],(int)$activity->id,(int)$data['revisao'],($data['ciencia_totvs']??'')==='1');
+        // change() has committed cancellation and audit together. Verify persisted state before reporting success.
+        $persisted=$table->get($entry->id);
+        if (!$persisted->cancelado) { throw new \RuntimeException('Cancelamento não persistido.'); }
+        return $this->response->withType('application/json')->withStringBody(json_encode([
+            'success'=>true,'apontamento_id'=>(int)$persisted->id,'cancelado'=>true,
+        ],JSON_THROW_ON_ERROR));
+    }
     public function view($id,ListOrders $orders)
     {
         Access::pcm($this->currentUser);$activity=$this->activity((int)$id);

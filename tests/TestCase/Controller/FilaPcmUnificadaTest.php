@@ -14,6 +14,17 @@ class FilaPcmUnificadaTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();PeriodoContexto::set(null);
+        $db=Access::table('Apontamentos')->getConnection();
+        if ($db->getDriver() instanceof \Cake\Database\Driver\Postgres) {
+            $schema=$db->execute('SELECT current_schema()')->fetch()[0];
+            if ($schema!==getenv('PCM_CANCEL_API_TEST_SCHEMA') || !preg_match('/^pcm_cancel_api_test_[a-f0-9]{16}$/D',$schema)) {
+                throw new \RuntimeException('Os testes PostgreSQL exigem o schema descartável do verificador de cancelamento.');
+            }
+            // TRUNCATE only disposable fixtures; DELETE is forbidden by history immutability triggers.
+            $names=$db->execute("SELECT tablename FROM pg_tables WHERE schemaname=? AND tablename<>'phinxlog'",[$schema])->fetchAll('assoc');
+            $quoted=array_map(static fn(array $r):string=>'"'.$schema.'"."'.str_replace('"','""',$r['tablename']).'"',$names);
+            if ($quoted) {$db->execute('TRUNCATE TABLE '.implode(',',$quoted).' RESTART IDENTITY CASCADE');}
+        }
         foreach(['Auditorias','Insumos','EvolucaoPesos','EvolucaoMetas','EvolucaoRegistros','EvolucaoLotes','EvolucaoVersoes','CalendariosOperacionais','EvolucaoSemanas','VinculosItens','VinculosLotes','Apontamentos','Atividades','PendenciasOrdens','PendenciasConsultas','UsuariosSetores','Usuarios','Cadernos','Setores','AreasFabrica','Entressafras'] as $alias)Access::table($alias)->deleteAll([]);
         $now=gmdate('Y-m-d H:i:s');$t=Access::table('Usuarios');
         foreach(['admin'=>'ADMIN_PCM','pcm'=>'PCM','responsible'=>'RESPONSAVEL_SETOR'] as $property=>$role){
@@ -523,4 +534,141 @@ class FilaPcmUnificadaTest extends TestCase
         $this->replaceRequest(['headers'=>['X-Requested-With'=>'XMLHttpRequest']]);$this->post($url,$data);$this->assertResponseCode(422);$this->assertSame(1,$audits->find()->where(['apontamento_id'=>$id,'acao'=>'cancelar'])->count());
         $this->get($url);$this->assertResponseOk();$this->assertResponseNotContains('data-cancel-entry="'.$id.'"');
     }
+    public function testReproduceLegacyCancellationHtmlResponses(): void
+    {
+        $id=$this->hours();$url='/fila-pcm/os/'.$this->activities[0];
+        $data=['acao'=>'cancelar','apontamento_id'=>(string)$id,'revisao'=>'0','confirmar'=>'1','motivo'=>'Test'];
+        $this->replaceRequest(['headers'=>['X-Requested-With'=>'XMLHttpRequest']]);
+        $this->post($url,$data+['_csrfToken'=>'invalid']);$this->assertResponseCode(403);
+        $this->assertStringContainsString('text/html',$this->_response->getHeaderLine('Content-Type'));
+        $this->login($this->pcm);$this->replaceRequest(['headers'=>['X-Requested-With'=>'XMLHttpRequest']]);
+        $this->post($url,$data);$this->assertResponseCode(403);
+        $this->assertStringContainsString('text/html',$this->_response->getHeaderLine('Content-Type'));
+        $this->session(['Auth'=>['id'=>0]]);$this->replaceRequest(['headers'=>['X-Requested-With'=>'XMLHttpRequest']]);
+        $this->post($url,$data);$this->assertRedirect(['controller'=>'Auth','action'=>'login']);
+        $this->assertFalse(Access::table('Apontamentos')->get($id)->cancelado);
+    }
+
+    private function cancellationData(int $id): array
+    {
+        return ['apontamento_id'=>(string)$id,'revisao'=>(string)Access::table('Apontamentos')->get($id)->revisao_pcm,
+            'confirmar'=>'1','motivo'=>'Cancelamento de teste isolado'];
+    }
+    private function cancellationApi(int $activity,array $data,int $status): array
+    {
+        // JSON is guaranteed even without the AJAX header.
+        $this->replaceRequest([]);
+        $this->post('/fila-pcm/os/'.$activity.'/excluir-apontamento',$data);
+        $this->assertResponseCode($status,(string)$this->_response->getBody());
+        $this->assertStringContainsString('application/json',$this->_response->getHeaderLine('Content-Type'));
+        $this->assertFalse($this->_response->hasHeader('Location'));
+        return json_decode((string)$this->_response->getBody(),true,512,JSON_THROW_ON_ERROR);
+    }
+    public function testCancellationApiPendingConfirmedPersistenceAndDuplicate(): void
+    {
+        $table=Access::table('Apontamentos');$other=$this->hours(0,'pessoa-2');$supply=$this->supplies()[0];
+        $otherBefore=$table->get($other)->toArray();$supplyBefore=Access::table('Insumos')->get($supply)->toArray();
+        foreach ([false,true] as $confirmed) {
+            $id=$this->hours();
+            if ($confirmed) {(new FilaPcm())->confirm($this->admin,$this->activities[0],$this->selection([$id],'Apontamentos'),'lancado','',true);}
+            $before=$table->get($id)->toArray();$data=$this->cancellationData($id);
+            if ($confirmed) {$data['ciencia_totvs']='1';}
+            $result=$this->cancellationApi($this->activities[0],$data,200);
+            $this->assertSame(['success'=>true,'apontamento_id'=>$id,'cancelado'=>true],$result);
+            $row=$table->get($id);$this->assertTrue($row->cancelado);
+            foreach (['controle_pcm','confirmado_por','confirmado_em','snapshot','minutos','inicio','fim','descricao'] as $field) {$this->assertEquals($before[$field],$row->get($field));}
+            $audit=Access::table('Auditorias')->find()->where(['apontamento_id'=>$id,'acao'=>'cancelar'])->firstOrFail();
+            $this->assertSame($data['motivo'],$audit->motivo);$this->assertSame($this->admin,(int)$audit->usuario_id);
+            $this->assertTrue(json_decode($audit->depois,true)['cancelado']);
+            $this->assertFalse($this->cancellationApi($this->activities[0],$data,409)['success']);
+            $this->assertSame(1,Access::table('Auditorias')->find()->where(['apontamento_id'=>$id,'acao'=>'cancelar'])->count());
+        }
+        $this->assertEquals($otherBefore,$table->get($other)->toArray());
+        $this->assertEquals($supplyBefore,Access::table('Insumos')->get($supply)->toArray());
+        $this->get('/fila-pcm/os/'.$this->activities[0]);$this->assertResponseOk();
+        $this->assertResponseContains('/fila-pcm/os/'.$this->activities[0].'/excluir-apontamento');
+    }
+    public function testCancellationApiValidationAndNotFound(): void
+    {
+        $id=$this->hours();$data=$this->cancellationData($id);
+        foreach (['','   '] as $reason) {$this->assertFalse($this->cancellationApi($this->activities[0],array_replace($data,['motivo'=>$reason]),422)['success']);}
+        $this->cancellationApi($this->activities[1],$data,404);
+        $this->cancellationApi(99999999,$data,404);
+        $this->cancellationApi($this->activities[0],array_replace($data,['apontamento_id'=>'99999999']),404);
+        $this->cancellationApi($this->activities[0],array_replace($data,['revisao'=>'99']),409);
+        (new FilaPcm())->confirm($this->admin,$this->activities[0],$this->selection([$id],'Apontamentos'),'lancado','',true);
+        $data=$this->cancellationData($id);
+        $this->cancellationApi($this->activities[0],$data,422);
+        $this->assertFalse(Access::table('Apontamentos')->get($id)->cancelado);
+    }
+    public function testCancellationApiCsrfPermissionAndExpiredSession(): void
+    {
+        $id=$this->hours();$data=$this->cancellationData($id);
+        $result=$this->cancellationApi($this->activities[0],$data+['_csrfToken'=>'invalid'],403);
+        $this->assertSame('csrf_invalido',$result['code']);
+        foreach ([$this->pcm,$this->responsible] as $actor) {
+            $this->login($actor);$this->assertFalse($this->cancellationApi($this->activities[0],$data,403)['success']);
+        }
+        $this->login($this->admin);$this->session(['Auth'=>['last'=>time()-1801]]);
+        $this->assertSame('sessao_expirada',$this->cancellationApi($this->activities[0],$data,401)['code']);
+        $this->assertFalse(Access::table('Apontamentos')->get($id)->cancelado);
+        $this->assertSame(0,Access::table('Auditorias')->find()->where(['apontamento_id'=>$id,'acao'=>'cancelar'])->count());
+    }
+    public function testCancellationApiPostOnlyAndInvalidRoute(): void
+    {
+        $id=$this->hours();$url='/fila-pcm/os/'.$this->activities[0].'/excluir-apontamento';
+        $this->get($url);$this->assertResponseCode(405);$this->assertHeader('Allow','POST');
+        $this->assertStringContainsString('application/json',$this->_response->getHeaderLine('Content-Type'));
+        $this->assertFalse(json_decode((string)$this->_response->getBody(),true,512,JSON_THROW_ON_ERROR)['success']);
+        $this->post('/fila-pcm/os/invalid/excluir-apontamento',$this->cancellationData($id));$this->assertResponseCode(404);
+        $this->assertStringContainsString('application/json',$this->_response->getHeaderLine('Content-Type'));
+        $this->assertFalse(Access::table('Apontamentos')->get($id)->cancelado);
+    }
+    public function testCancellationApiDatabaseErrorRollsBack(): void
+    {
+        $id=$this->hours();$table=Access::table('Apontamentos');$before=$table->get($id)->toArray();
+        $audits=Access::table('Auditorias');
+        $listener=static function($event,$row):void {
+            if ($row->acao==='cancelar') {Access::table('Auditorias')->getConnection()->execute('SELECT * FROM cancellation_test_missing_table');}
+        };
+        \Cake\Event\EventManager::instance()->on('Model.beforeSave',$listener);
+        try {
+            $result=$this->cancellationApi($this->activities[0],$this->cancellationData($id),500);
+            $this->assertFalse($result['success']);$this->assertSame('erro_interno',$result['code']);
+            $this->assertStringNotContainsString('SELECT',$result['error']);
+        } finally {\Cake\Event\EventManager::instance()->off('Model.beforeSave',$listener);}
+        $this->assertEquals($before,$table->get($id)->toArray());
+        $this->assertSame(0,$audits->find()->where(['apontamento_id'=>$id,'acao'=>'cancelar'])->count());
+    }
+    public function testCancellationApiPostgresTriggerProtectionAndMigration(): void
+    {
+        $db=Access::table('Apontamentos')->getConnection();
+        if (!$db->getDriver() instanceof \Cake\Database\Driver\Postgres) {$this->markTestSkipped('Verificado no schema PostgreSQL descartável.');}
+        $id=$this->hours();
+        (new FilaPcm())->confirm($this->admin,$this->activities[0],$this->selection([$id],'Apontamentos'),'lancado','',true);
+        $before=Access::table('Apontamentos')->get($id)->toArray();
+        foreach ([
+            ['UPDATE apontamentos SET descricao=? WHERE id=?',['Changed',$id]],
+            ['UPDATE apontamentos SET cancelado=true,alterado_por=?,revisao_pcm=revisao_pcm+1 WHERE id=?',[$this->pcm,$id]],
+            ['UPDATE apontamentos SET cancelado=true,confirmado_em=NULL,alterado_por=?,revisao_pcm=revisao_pcm+1 WHERE id=?',[$this->admin,$id]],
+        ] as [$sql,$params]) {
+            try {$db->transactional(fn()=>$db->execute($sql,$params));$this->fail('O gatilho deve preservar o apontamento confirmado.');}
+            catch (\Cake\Database\Exception\QueryException $e) {$this->assertStringContainsString('P0001',$e->getMessage());}
+            $this->assertEquals($before,Access::table('Apontamentos')->get($id)->toArray());
+        }
+        require_once ROOT.'/config/Migrations/20261112130000_AllowConfirmedEntryCancellation.php';
+        $migration=new \AllowConfirmedEntryCancellation(20261112130000);
+        $migration->setAdapter(new \Migrations\Db\Adapter\PostgresAdapter(['adapter'=>'pgsql','connection'=>$db]));
+        $data=$this->cancellationData($id)+['ciencia_totvs'=>'1'];
+        try {
+            $migration->down();
+            // Reproduce the actual original trigger failure through the HTTP endpoint.
+            $this->cancellationApi($this->activities[0],$data,500);
+            $this->assertFalse(Access::table('Apontamentos')->get($id)->cancelado);
+        } finally {$migration->up();}
+        $this->cancellationApi($this->activities[0],$data,200);
+        $this->assertTrue(Access::table('Apontamentos')->get($id)->cancelado);
+        $this->assertSame(1,Access::table('Auditorias')->find()->where(['apontamento_id'=>$id,'acao'=>'confirmacao_totvs'])->count());
+    }
+
 }

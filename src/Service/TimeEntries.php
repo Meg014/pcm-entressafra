@@ -244,9 +244,9 @@ final class TimeEntries
             if ($action==='cancelar') {
                 PeriodoContexto::writable((int)$activity->entressafra_id);
                 if ($activityId!==null && (int)$row->atividade_id!==$activityId) { throw new \DomainException('Apontamento fora da O.S. selecionada.'); }
-                if ($revision!==null && (int)$row->revisao_pcm!==$revision) { throw new \DomainException('Registro alterado. Atualize a tela.'); }
+                if ($revision!==null && (int)$row->revisao_pcm!==$revision) { throw new \DomainException('Registro alterado. Atualize a tela.',409); }
             }
-            if ($row->cancelado) { throw new \DomainException('Apontamento já cancelado.'); }
+            if ($row->cancelado) { throw new \DomainException('Apontamento já cancelado.',409); }
             if ($action==='cancelar' && $row->controle_pcm==='lancado' && !$totvsAcknowledged) { throw new \DomainException('Confirme a ciência de que o TOTVS não será alterado.'); }
             if($row->controle_pcm==='lancado' && !in_array($action,['pendente','cancelar'],true)) { throw new \DomainException('Reabra a confirmação com justificativa antes de alterar o apontamento.'); }
             $before = $row->toArray();
