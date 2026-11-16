@@ -1,7 +1,11 @@
 # Exportar porcentagens — Excel
 
-Disponível no menu administrativo somente para ADMIN_PCM, em `/exportar-porcentagens`.
-A seleção inicia na entressafra ativa e não altera a entressafra de edição da sessão.
+Disponível somente para ADMIN_PCM pelo botão Exportar Excel ao lado de Pesquisar
+na grade de evolução. Reutiliza `/exportar-porcentagens?baixar=1`, com URL gerada
+pelo CakePHP para preservar o prefixo de instalação, inclusive `/pcm-entressafra/`.
+Envia explicitamente a entressafra ativa e o setor selecionado, sem pesquisa ou
+paginação. O download via fetch e Blob não navega, salva alterações ou aciona
+beforeunload. HTML/JSON não são aceitos como Excel; erros aparecem na própria tela.
 Os setores são as áreas utilizadas na grade de porcentagens. São exportadas todas as
 O.S. PROGRAMADA da área, inclusive sem caderno quando possuem classificação direta.
 As células semanais usam o último registro/revisão da semana, pelo mesmo calendário
@@ -29,3 +33,35 @@ Na implementação, essa conferência no banco conectado foi impedida pela ausê
 da coluna `atividades.tipo_planejamento`. Nenhuma migration foi aplicada pelo teste.
 É necessário atualizar o banco pelo processo de implantação do projeto e executar
 novamente a conferência antes de considerar DESTILARIA e Mecânica homologadas.
+
+## Correção da integração e verificação no navegador
+
+Confirmado no banco operacional: `atividades.tipo_planejamento` ausente.
+A consulta HTTP de TRAT. DE CALDO (setor 12, entressafra 43) recebe 503 com mensagem
+indicando a migration existente. Nenhuma migration foi aplicada e a verificação
+operacional usou conexão com `default_transaction_read_only=on`.
+
+Em Chrome headless, com banco SQLite de teste atualizado: download real iniciado
+na página 2; arquivo reaberto com 260 O.S., incluindo registros sem porcentagens;
+MIME e Content-Disposition corretos; prefixo preservado; URL da tela e rascunho
+inalterados; erro 503 exibido e resposta HTML rejeitada; nenhum erro JavaScript.
+
+Para reproduzir, instale Playwright apenas no diretório temporário e use o Chrome
+local (não há dependência nova do aplicativo):
+
+```powershell
+php vendor/phpunit/phpunit/phpunit --filter testExportButtonUsesExplicitActiveSeasonAndExistingEndpoint
+npm.cmd install --prefix tmp/export-download-browser --no-save --package-lock=false playwright
+$env:PCM_EXPORT_BROWSER_TEST='1'
+php -d display_errors=0 -S 127.0.0.1:8879 tests/Support/ExportDownloadRouter.php
+```
+
+Com o servidor de teste em execução, em outro terminal:
+
+```powershell
+node tools/test_exportar_porcentagens_browser.js
+```
+
+O router de teste autentica somente no SQLite isolado, exige a variável acima e
+aceita conexões locais. Encerre o servidor de teste após a execução. O artefato
+baixado fica em `tmp/export-download-browser.xlsx`.

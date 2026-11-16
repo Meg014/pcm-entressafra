@@ -20,6 +20,12 @@ class OperacionalController extends OperacaoController
     public function porcentagem()
     {
         $this->response=$this->response->withHeader('Cache-Control','no-store, private');
+        $exportSeason = null;
+        if ($this->currentUser->perfil === 'ADMIN_PCM') {
+            $active = Access::table('Entressafras')->find()->where(['status'=>'ativa'])->all();
+            if ($active->count() === 1) $exportSeason = (int)$active->first()->id;
+        }
+        $this->set('exportSeason', $exportSeason);
         $service=new \App\Service\EvolucaoSemanal();$season=(int)\App\Service\PeriodoContexto::id();
         $area=(int)$this->request->getQuery('area_id',0);$search=$this->request->getQuery('os','');$pending=[];
         $key=(string)($this->request->getData('chave')??bin2hex(random_bytes(16)));$ajax=$this->request->getHeaderLine('X-Requested-With')==='XMLHttpRequest';

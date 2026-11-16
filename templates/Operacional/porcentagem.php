@@ -14,11 +14,14 @@ $weeks=$batch['weeks'];
 <?php if($currentUser->perfil==='ADMIN_PCM'): ?>
 <?= $this->Form->button('Exportar Excel',[
     'type'=>'button',
+    'id'=>'porcentagens-exportar',
     'class'=>'btn btn-success text-nowrap',
-    'onclick'=>"const setor=this.form.elements.area_id; if(!setor.value){setor.setCustomValidity('Selecione o setor para exportar.');setor.reportValidity();setor.setCustomValidity('');return;} const url=new URL(".json_encode($this->Url->build(['controller'=>'ExportarPorcentagens','action'=>'index','?'=>['baixar'=>'1']]),JSON_HEX_APOS|JSON_HEX_QUOT).",window.location.origin);url.searchParams.set('area_id',setor.value);window.location.assign(url.href);",
+    'data-export-url'=>$this->Url->build(['controller'=>'ExportarPorcentagens','action'=>'index','?'=>['baixar'=>'1','entressafra_id'=>$exportSeason]], ['escape'=>false]),
+    'disabled'=>$exportSeason===null,
 ]) ?>
 <?php endif; ?></div>
 <?= $this->Form->end() ?>
+<?php if($currentUser->perfil==='ADMIN_PCM'): ?><p id="porcentagens-exportar-erro" class="text-danger" role="alert" hidden></p><?php endif; ?>
 <?php if($area||$search!==''): ?>
 <div class="weekly-sheet-caption"><span><?= h($batch['total']) ?> O.S. · Percentuais acumulados por semana</span><span id="porcentagens-pendentes" role="status">Nenhuma alteração pendente.</span></div>
 <p class="small text-secondary">Vazio: sem lançamento. O cálculo mantém o último acumulado anterior. Semanas de terça a segunda, com análise na terça.</p>
@@ -44,3 +47,4 @@ $weeks=$batch['weeks'];
 <noscript>Ative o JavaScript para editar e salvar a planilha semanal.</noscript>
 <?php endif; ?></section>
 <?= $this->Html->script('porcentagens-lote.js?v='.filemtime(WWW_ROOT.'js/porcentagens-lote.js'),['block'=>true]) ?>
+<?php if($currentUser->perfil==='ADMIN_PCM'): ?><?= $this->Html->script('exportar-porcentagens.js?v='.filemtime(WWW_ROOT.'js/exportar-porcentagens.js'),['block'=>true]) ?><?php endif; ?>

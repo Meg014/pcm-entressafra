@@ -58,6 +58,9 @@ class PorcentagensLoteTest extends TestCase
         $this->assertSame($before,[Access::table('Auditorias')->find()->count(),Access::table('EvolucaoRegistros')->find()->count()]);
         $this->get('/exportar-porcentagens');$this->assertResponseOk();$this->assertResponseContains('Baixar Excel');
         $this->get('/exportar-porcentagens?entressafra_id='.$this->season.'&area_id='.$this->areas[0].'&baixar=1');$this->assertResponseOk();
+        $this->assertHeader('Content-Type','application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+        $this->assertHeaderContains('Content-Disposition','attachment;');
+        $this->assertHeaderContains('Content-Disposition','.xlsx');
         $this->assertStringStartsWith('PK',(string)$this->_response->getBody());
         $this->get('/exportar-porcentagens?entressafra_id=999999&area_id='.$this->areas[0].'&baixar=1');$this->assertResponseCode(400);
         $t=Access::table('Entressafras');$other=$t->saveOrFail($t->newEntity(['nome'=>'Outra','data_inicio'=>'2025-10-01','data_fim'=>'2026-04-01','status'=>'encerrada']));
@@ -69,6 +72,36 @@ class PorcentagensLoteTest extends TestCase
         $this->get('/exportar-porcentagens?entressafra_id='.$this->season.'&area_id='.$this->areas[0].'&baixar=1');$this->assertResponseCode(403);
         $this->expectException(\Cake\Http\Exception\ForbiddenException::class);
         $export->workbook(Access::actor($this->responsible),$this->season,$this->areas[0],$now);
+    }
+    public function testExportButtonUsesExplicitActiveSeasonAndExistingEndpoint(): void
+    {
+        $this->get('/lancar-porcentagem?area_id='.$this->areas[0].'&pagina=2');
+        $this->assertResponseOk();
+        $dom=new \DOMDocument();@$dom->loadHTML((string)$this->_response->getBody());$xp=new \DOMXPath($dom);
+        $button=$xp->query('//button[@id="porcentagens-exportar"]')->item(0);
+        $this->assertNotNull($button);
+        $this->assertSame('button',$button->getAttribute('type'));
+        $this->assertFalse($button->hasAttribute('onclick'));
+        parse_str((string)parse_url($button->getAttribute('data-export-url'),PHP_URL_QUERY),$query);
+        $this->assertSame((string)$this->season,$query['entressafra_id']??null,$button->getAttribute('data-export-url'));
+        $this->assertSame('1',$query['baixar']);
+        $this->assertArrayNotHasKey('pagina',$query);
+        $this->assertArrayNotHasKey('os',$query);
+        $this->assertResponseContains('exportar-porcentagens.js');
+        $this->get('/exportar-porcentagens?entressafra_id='.$this->season.'&area_id='.$this->areas[0].'&baixar=1');
+        $this->assertResponseOk();
+        $path=tempnam(TMP,'empty-percent-xlsx-');
+        try {
+            file_put_contents($path,(string)$this->_response->getBody());
+            $book=\PhpOffice\PhpSpreadsheet\IOFactory::load($path);$sheet=$book->getActiveSheet();
+            $this->assertSame(265,$sheet->getHighestRow());
+            $this->assertSame('006259',$sheet->getCell('A265')->getValue());
+            $this->assertNull($sheet->getCell('D6')->getValue());
+            $this->assertNull($sheet->getCell('E6')->getValue());
+            $book->disconnectWorksheets();
+        }finally{unlink($path);}
+        $this->login($this->responsible);$this->get('/lancar-porcentagem?area_id='.$this->areas[0]);
+        $this->assertResponseOk();$this->assertResponseNotContains('id="porcentagens-exportar"');
     }
     public function testSectorUsesPrincipalAreaAcrossTeamsAndPaginationAndNumberSearch(): void
     {

@@ -28,6 +28,11 @@ class ExportarPorcentagensController extends AppController
         if ($area && !isset($areas[$area])) throw new \Cake\Http\Exception\ForbiddenException('Setor fora da entressafra selecionada.');
         if ($this->request->getQuery('baixar') === '1') {
             if (!$area) throw new \Cake\Http\Exception\BadRequestException('Selecione o setor.');
+            if (!Access::table('Atividades')->getSchema()->hasColumn('tipo_planejamento')) {
+                return $this->response->withStatus(503)->withType('text/plain')->withStringBody(
+                    'Exportação indisponível: falta a coluna atividades.tipo_planejamento no banco operacional. O PCM deve aplicar a migration pendente 20261106100000_AddTipoPlanejamento.php pelo processo de implantação.'
+                );
+            }
             $book = (new ExportarPorcentagens())->workbook($this->currentUser, $season, $area);
             $stream = fopen('php://temp', 'w+b');
             try {
@@ -38,7 +43,7 @@ class ExportarPorcentagensController extends AppController
                 fclose($stream);
                 $book->disconnectWorksheets();
             }
-            return $this->response->withType('xlsx')->withDownload('porcentagens-'.$season.'-'.$area.'.xlsx')->withStringBody($body);
+            return $this->response->withType('application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')->withHeader('X-Content-Type-Options', 'nosniff')->withDownload('porcentagens-'.$season.'-'.$area.'.xlsx')->withStringBody($body);
         }
         $this->set(compact('seasons', 'season', 'areas', 'area'));
     }
