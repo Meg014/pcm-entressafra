@@ -4,9 +4,11 @@ namespace App\Service;
 
 use PhpOffice\PhpSpreadsheet\{Spreadsheet, Cell\Coordinate, Cell\DataType, Style\Fill, Worksheet\PageSetup};
 
-/** Local persisted records only. No mutations and no TOTVS connection. */
+/** Persisted percentages; description fallback uses the same read-only source as the grid. */
 final class ExportarPorcentagens
 {
+    public function __construct(private ?\App\Integration\Totvs\ListOrders $source = null) {}
+
     public function workbook($user, int $season, int $area, ?\DateTimeImmutable $now = null): Spreadsheet
     {
         Access::admin($user);
@@ -38,12 +40,16 @@ final class ExportarPorcentagens
         $evolution->loadHistory($season);
         $row = 6;
         $seen = [];
+        $missing = [];
         foreach ($query->all() as $a) {
             $key = $a->os_chave ?: $a->os_filial.':'.$a->os_numero;
             if (isset($seen[$key])) continue;
             $seen[$key] = true;
             $text('A'.$row, (string)$a->os_numero);
-            $text('B'.$row, OsApresentacao::description($a->descricao_atividade, json_decode($a->snapshot_totvs ?? '{}', true) ?? []));
+            $description = OsApresentacao::description($a->descricao_atividade, json_decode($a->snapshot_totvs ?? '{}', true) ?? []);
+            $text('B'.$row, $description);
+            if ($description === 'Descrição não informada') $missing[$a->os_numero] = $row;
+            $sheet->getRowDimension($row)->setRowHeight(-1);
             $text('C'.$row, (string)$a->bem);
             $history = $evolution->history((int)$a->id);
             $latest = null;
@@ -57,12 +63,23 @@ final class ExportarPorcentagens
             if ($row % 2 === 0) $sheet->getStyle('A'.$row.':'.$lastColumn.$row)->getFill()->setFillType(Fill::FILL_SOLID)->getStartColor()->setARGB('FFF1F5F9');
             $row++;
         }
+        // Same fallback as EvolucaoSemanal::page, in blocks supported by ListOrders.
+        foreach (array_chunk(array_map('strval', array_keys($missing)), 100) as $numbers) {
+            try {
+                $notes = ($this->source ?? new \App\Integration\Totvs\ListOrders())->find($numbers);
+                foreach ($notes as $number => $note) {
+                    if (isset($missing[$number])) $text('B'.$missing[$number], OsApresentacao::description(null, $note));
+                }
+            } catch (\DomainException) {
+                // Keep available local descriptions when the read-only source is unavailable.
+            }
+        }
         $lastRow = max(5, $row-1);
         $sheet->getStyle('A1')->getFont()->setBold(true)->setSize(16);
         $sheet->getStyle('A5:'.$lastColumn.'5')->applyFromArray(['font'=>['bold'=>true,'color'=>['argb'=>'FFFFFFFF']], 'fill'=>['fillType'=>Fill::FILL_SOLID,'startColor'=>['argb'=>'FF234E70']]]);
         $sheet->getStyle('A5:'.$lastColumn.$lastRow)->getAlignment()->setWrapText(true)->setVertical('center');
         $sheet->getRowDimension(5)->setRowHeight(48);
-        foreach (['A'=>18,'B'=>55,'C'=>30,'D'=>22] as $col=>$width) $sheet->getColumnDimension($col)->setWidth($width);
+        foreach (['A'=>18,'B'=>65,'C'=>30,'D'=>22] as $col=>$width) $sheet->getColumnDimension($col)->setWidth($width);
         foreach ($weeks as $i=>$_) $sheet->getColumnDimension(Coordinate::stringFromColumnIndex(5+$i))->setWidth(23);
         if ($row > 6) $sheet->getStyle('D6:'.$lastColumn.$lastRow)->getNumberFormat()->setFormatCode('0.##%');
         $sheet->freezePane('E6');

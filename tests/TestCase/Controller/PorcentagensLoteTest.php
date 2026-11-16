@@ -24,6 +24,63 @@ class PorcentagensLoteTest extends TestCase
     protected function tearDown(): void {PeriodoContexto::set(null);parent::tearDown();}
     private function login(int $id): void {$u=Access::actor($id);$this->session(['Auth'=>['id'=>$id,'stamp'=>hash('sha256',$u->senha_hash),'last'=>time()],'Periodo'=>['id'=>$this->season,'usuario_id'=>$id]]);}
     private function row(int $index,float $value,float $base=0,int $revision=0): array {return ['atividade_id'=>$this->ids[$index],'percentual'=>$value,'base'=>$base,'revisao'=>$revision,'referencia'=>$this->reference];}
+    public function testExcelDescriptionsMatchGridAndPreserveCompleteText(): void
+    {
+        $user=Access::actor($this->admin);
+        $now=new \DateTimeImmutable('2026-10-28',new \DateTimeZone('America/Sao_Paulo'));
+        $before=(new \App\Service\ExportarPorcentagens())->workbook($user,$this->season,$this->areas[0],$now);
+        $original=$before->getActiveSheet()->toArray();$before->disconnectWorksheets();
+        $long=str_repeat('Descrição completa da atividade sem truncamento. ',30)."\nFim da descrição.";
+        $expected=['006141'=>'TROCA ANEL DE VEDAÇÃO P/ REGENERADOR','006144'=>'LIMPEZA DO FILTRO 02 E TROCA DOS BICOS SPRAY'];
+        $t=Access::table('Atividades');
+        foreach(array_slice($this->ids,0,260) as $i=>$id) {
+            $a=$t->get($id);$a->descricao_atividade=$i===0?$long:null;
+            $a->snapshot_totvs=json_encode($i===1?['descricao_totvs'=>'Descrição do snapshot']:($i===2?['ultima_sincronizacao'=>['descricao_totvs'=>'Descrição da última sincronização']]:[]),JSON_UNESCAPED_UNICODE);
+            $t->saveOrFail($a);
+        }
+        $sizes=[];
+        $source=new \App\Integration\Totvs\ListOrders(function($sql,$params)use(&$sizes,$expected): array {
+            $numbers=[];foreach($params as $key=>$value)if(str_starts_with($key,'n')&&$value!=='')$numbers[]=$value;
+            $sizes[]=count($numbers);$rows=[];
+            foreach($numbers as $number) {
+                $this->assertNotContains($number,['006000','006001','006002']);
+                if($number==='006003')continue;
+                $rows[]=['numero'=>$number,'filial'=>'01','codigo_servico'=>'1','codigo_area'=>'A0','centro_custo'=>'CC','data_origem'=>'20260101','situacao'=>'L','termino'=>'N','bem'=>'BEM','servico'=>'ENTRESSAFRA','correspondencias_servico'=>1,'descricao_totvs'=>$expected[$number]??'Descrição consultada '.$number];
+            }
+            return $rows;
+        });
+        $book=(new \App\Service\ExportarPorcentagens($source))->workbook($user,$this->season,$this->areas[0],$now);$sheet=$book->getActiveSheet();
+        $this->assertSame([100,100,57],$sizes);
+        $this->assertSame(265,$sheet->getHighestRow());
+        foreach($expected as $number=>$description) {
+            $row=(int)$number-6000+6;
+            $grid=(new \App\Service\EvolucaoSemanal($now,$source))->page($user,$this->season,$this->areas[0],$number,1);
+            $this->assertSame($description,$grid['rows'][0]['descricao']);
+            $this->assertSame($grid['rows'][0]['descricao'],$sheet->getCell('B'.$row)->getValue());
+        }
+        $this->assertSame($long,$sheet->getCell('B6')->getValue());
+        $this->assertSame('Descrição do snapshot',$sheet->getCell('B7')->getValue());
+        $this->assertSame('Descrição da última sincronização',$sheet->getCell('B8')->getValue());
+        $this->assertSame('Descrição não informada',$sheet->getCell('B9')->getValue());
+        $this->assertTrue($sheet->getStyle('B6')->getAlignment()->getWrapText());
+        $this->assertSame(-1.0,$sheet->getRowDimension(6)->getRowHeight());
+        $after=$sheet->toArray();
+        foreach($original as $i=>$cells) {unset($cells[1],$after[$i][1]);$this->assertSame($cells,$after[$i]);}
+        $path=tempnam(TMP,'description-xlsx-');
+        try {
+            (new \PhpOffice\PhpSpreadsheet\Writer\Xlsx($book))->save($path);
+            $loaded=\PhpOffice\PhpSpreadsheet\IOFactory::load($path);
+            foreach($expected as $number=>$description)$this->assertSame($description,$loaded->getActiveSheet()->getCell('B'.((int)$number-6000+6))->getValue());
+            $this->assertSame($long,$loaded->getActiveSheet()->getCell('B6')->getValue());
+            $loaded->disconnectWorksheets();
+        }finally{unlink($path);$book->disconnectWorksheets();}
+        $unavailable=new \App\Integration\Totvs\ListOrders(static function(){throw new \RuntimeException('Fonte indisponível');});
+        $book=(new \App\Service\ExportarPorcentagens($unavailable))->workbook($user,$this->season,$this->areas[0],$now);
+        $this->assertSame($long,$book->getActiveSheet()->getCell('B6')->getValue());
+        $this->assertSame('Descrição do snapshot',$book->getActiveSheet()->getCell('B7')->getValue());
+        $this->assertSame('Descrição não informada',$book->getActiveSheet()->getCell('B147')->getValue());
+        $book->disconnectWorksheets();
+    }
     public function testExcelExportRealCellsAllRowsAndPermissions(): void
     {
         $now=new \DateTimeImmutable('2026-10-28',new \DateTimeZone('America/Sao_Paulo'));
