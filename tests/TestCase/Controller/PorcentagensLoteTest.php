@@ -10,7 +10,7 @@ class PorcentagensLoteTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();PeriodoContexto::set(null);
-        foreach(['PendenciasOrdens','PendenciasConsultas','EvolucaoPesos','EvolucaoMetas','EvolucaoRegistros','EvolucaoLotes','EvolucaoVersoes','CalendariosOperacionais','EvolucaoSemanas','VinculosItens','VinculosLotes','Auditorias','Apontamentos','Atividades','UsuariosSetores','Usuarios','Cadernos','AreasFabrica','Setores','Entressafras'] as $alias)Access::table($alias)->deleteAll([]);
+        foreach(['Insumos','PendenciasOrdens','PendenciasConsultas','EvolucaoPesos','EvolucaoMetas','EvolucaoRegistros','EvolucaoLotes','EvolucaoVersoes','CalendariosOperacionais','EvolucaoSemanas','VinculosItens','VinculosLotes','Auditorias','Apontamentos','Atividades','UsuariosSetores','Usuarios','Cadernos','AreasFabrica','Setores','Entressafras'] as $alias)Access::table($alias)->deleteAll([]);
         $t=Access::table('Usuarios');foreach(['ADMIN_PCM','RESPONSAVEL_SETOR'] as $role){$u=$t->saveOrFail(Access::entity($t,['nome'=>$role,'login'=>$role,'senha_hash'=>password_hash('teste123',PASSWORD_DEFAULT),'perfil'=>$role,'ativo'=>true,'created'=>gmdate('Y-m-d H:i:s'),'modified'=>gmdate('Y-m-d H:i:s')]));if($role==='ADMIN_PCM')$this->admin=(int)$u->id;else $this->responsible=(int)$u->id;}
         $t=Access::table('Entressafras');$this->season=(int)$t->saveOrFail($t->newEntity(['nome'=>'2026/2027','data_inicio'=>'2026-09-01','data_fim'=>'2027-04-10','status'=>'ativa']))->id;
         foreach(['MOENDA','CALDEIRA'] as $name){$t=Access::table('AreasFabrica');$this->areas[]=(int)$t->saveOrFail(Access::entity($t,['nome'=>$name,'entressafra_id'=>$this->season]))->id;}
@@ -24,6 +24,52 @@ class PorcentagensLoteTest extends TestCase
     protected function tearDown(): void {PeriodoContexto::set(null);parent::tearDown();}
     private function login(int $id): void {$u=Access::actor($id);$this->session(['Auth'=>['id'=>$id,'stamp'=>hash('sha256',$u->senha_hash),'last'=>time()],'Periodo'=>['id'=>$this->season,'usuario_id'=>$id]]);}
     private function row(int $index,float $value,float $base=0,int $revision=0): array {return ['atividade_id'=>$this->ids[$index],'percentual'=>$value,'base'=>$base,'revisao'=>$revision,'referencia'=>$this->reference];}
+    public function testExcelExportRealCellsAllRowsAndPermissions(): void
+    {
+        $now=new \DateTimeImmutable('2026-10-28',new \DateTimeZone('America/Sao_Paulo'));
+        $grid=new \App\Service\EvolucaoSemanal($now);$weeks=$grid->weeks($this->season);
+        foreach([[0,0,0],[0,2,35],[1,1,20]] as [$index,$week,$value]) {
+            $grid->save($this->admin,$this->season,$this->areas[0],[['atividade_id'=>$this->ids[$index],'referencia'=>$weeks[$week]['fim'],'percentual'=>$value,'base'=>null,'base_registro'=>0,'revisao'=>0]],bin2hex(random_bytes(16)));
+        }
+        $t=Access::table('Atividades');$a=$t->get($this->ids[259]);$a->tipo_planejamento=\App\Service\Planejamento::CORRETIVA;$t->saveOrFail($a);
+        $before=[Access::table('Auditorias')->find()->count(),Access::table('EvolucaoRegistros')->find()->count()];
+        $export=new \App\Service\ExportarPorcentagens();$book=$export->workbook(Access::actor($this->admin),$this->season,$this->areas[0],$now);
+        $sheet=$book->getActiveSheet();
+        $this->assertSame(264,$sheet->getHighestRow());
+        $this->assertSame('006000',$sheet->getCell('A6')->getValue());
+        $this->assertSame('Atividade específica 006000',$sheet->getCell('B6')->getValue());
+        $this->assertSame('Equipamento 006000',$sheet->getCell('C6')->getValue());
+        $this->assertSame(0.0,(float)$sheet->getCell('E6')->getValue());
+        $this->assertNull($sheet->getCell('F6')->getValue());
+        $this->assertSame(0.35,$sheet->getCell('G6')->getValue());
+        $this->assertSame(0.35,$sheet->getCell('D6')->getValue());
+        $this->assertSame(0.2,$sheet->getCell('F7')->getValue());
+        $this->assertNull($sheet->getCell('D8')->getValue());
+        $this->assertSame('006258',$sheet->getCell('A264')->getValue());
+        $this->assertSame('E6',$sheet->getFreezePane());
+        $path=tempnam(TMP,'xlsx-test-');
+        try {
+            (new \PhpOffice\PhpSpreadsheet\Writer\Xlsx($book))->save($path);
+            $loaded=\PhpOffice\PhpSpreadsheet\IOFactory::load($path);
+            $this->assertSame('006000',$loaded->getActiveSheet()->getCell('A6')->getValue());
+            $this->assertSame(0.0,(float)$loaded->getActiveSheet()->getCell('E6')->getValue());
+            $loaded->disconnectWorksheets();
+        } finally {unlink($path);$book->disconnectWorksheets();}
+        $this->assertSame($before,[Access::table('Auditorias')->find()->count(),Access::table('EvolucaoRegistros')->find()->count()]);
+        $this->get('/exportar-porcentagens');$this->assertResponseOk();$this->assertResponseContains('Baixar Excel');
+        $this->get('/exportar-porcentagens?entressafra_id='.$this->season.'&area_id='.$this->areas[0].'&baixar=1');$this->assertResponseOk();
+        $this->assertStringStartsWith('PK',(string)$this->_response->getBody());
+        $this->get('/exportar-porcentagens?entressafra_id=999999&area_id='.$this->areas[0].'&baixar=1');$this->assertResponseCode(400);
+        $t=Access::table('Entressafras');$other=$t->saveOrFail($t->newEntity(['nome'=>'Outra','data_inicio'=>'2025-10-01','data_fim'=>'2026-04-01','status'=>'encerrada']));
+        $this->get('/exportar-porcentagens?entressafra_id='.$other->id.'&area_id='.$this->areas[0].'&baixar=1');$this->assertResponseCode(403);
+        $t=Access::table('Usuarios');$pcm=$t->get($this->responsible);$pcm->perfil='PCM';$t->saveOrFail($pcm);
+        $this->login($this->responsible);$this->get('/exportar-porcentagens?entressafra_id='.$this->season.'&area_id='.$this->areas[0].'&baixar=1');$this->assertResponseCode(403);
+        $pcm->perfil='RESPONSAVEL_SETOR';$t->saveOrFail($pcm);
+        $this->login($this->responsible);$this->get('/exportar-porcentagens');$this->assertResponseCode(403);
+        $this->get('/exportar-porcentagens?entressafra_id='.$this->season.'&area_id='.$this->areas[0].'&baixar=1');$this->assertResponseCode(403);
+        $this->expectException(\Cake\Http\Exception\ForbiddenException::class);
+        $export->workbook(Access::actor($this->responsible),$this->season,$this->areas[0],$now);
+    }
     public function testSectorUsesPrincipalAreaAcrossTeamsAndPaginationAndNumberSearch(): void
     {
         $s=new PorcentagensLote();$admin=Access::actor($this->admin);$one=$s->page($admin,$this->season,$this->areas[0],'',1);$six=$s->page($admin,$this->season,$this->areas[0],'',6);

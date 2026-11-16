@@ -62,6 +62,11 @@ class AppController extends Controller
         }
         $this->currentUser = $user;
         $this->set('currentUser', $user);
+        // Read-only export has its own explicit season selector, independent of the editing context.
+        if ($this->request->getParam('controller') === 'ExportarPorcentagens') {
+            \App\Service\Access::admin($user);
+            return;
+        }
         if(!$this->periodo($event))return;
         if (\App\Service\Access::operational($user)) {
             $controller=$this->request->getParam('controller');$action=$this->request->getParam('action');

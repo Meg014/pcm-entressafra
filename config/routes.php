@@ -5,6 +5,7 @@ use Cake\Routing\RouteBuilder;
 return function (RouteBuilder $routes): void {
     $routes->setRouteClass(DashedRoute::class);
     $routes->scope('/', function (RouteBuilder $builder): void {
+        $builder->connect('/exportar-porcentagens',['controller'=>'ExportarPorcentagens','action'=>'index'])->setMethods(['GET']);
         $builder->connect('/apontamentos/servicos',['controller'=>'Apontamentos','action'=>'servicos'])->setMethods(['GET']);
         $builder->connect('/servicos-sugeridos',['controller'=>'ServicosSugeridos','action'=>'index'])->setMethods(['GET']);
         $builder->connect('/servicos-sugeridos/add',['controller'=>'ServicosSugeridos','action'=>'add'])->setMethods(['GET','POST']);
