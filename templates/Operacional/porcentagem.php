@@ -10,7 +10,14 @@ $weeks=$batch['weeks'];
 <?= $this->Form->create(null,['type'=>'get','id'=>'porcentagens-filtros','class'=>'row g-3 mb-3']) ?>
 <div class="col-md-5"><?= $this->Form->control('os',['label'=>'Pesquisar O.S.','value'=>$search,'placeholder'=>'Número da O.S.','maxlength'=>6,'class'=>'form-control','inputmode'=>'numeric']) ?></div>
 <div class="col-md-5"><?= $this->Form->control('area_id',['label'=>'Setor da Curva S','options'=>$batch['areas'],'empty'=>'Selecione o setor','value'=>$area,'class'=>'form-select']) ?></div>
-<div class="col-md-2 d-flex align-items-end"><?= $this->Form->button('Pesquisar',['class'=>'btn btn-outline-primary']) ?></div>
+<div class="col-md-2 d-flex align-items-end gap-2"><?= $this->Form->button('Pesquisar',['class'=>'btn btn-outline-primary']) ?>
+<?php if($currentUser->perfil==='ADMIN_PCM'): ?>
+<?= $this->Form->button('Exportar Excel',[
+    'type'=>'button',
+    'class'=>'btn btn-success text-nowrap',
+    'onclick'=>"const setor=this.form.elements.area_id; if(!setor.value){setor.setCustomValidity('Selecione o setor para exportar.');setor.reportValidity();setor.setCustomValidity('');return;} const url=new URL(".json_encode($this->Url->build(['controller'=>'ExportarPorcentagens','action'=>'index','?'=>['baixar'=>'1']]),JSON_HEX_APOS|JSON_HEX_QUOT).",window.location.origin);url.searchParams.set('area_id',setor.value);window.location.assign(url.href);",
+]) ?>
+<?php endif; ?></div>
 <?= $this->Form->end() ?>
 <?php if($area||$search!==''): ?>
 <div class="weekly-sheet-caption"><span><?= h($batch['total']) ?> O.S. · Percentuais acumulados por semana</span><span id="porcentagens-pendentes" role="status">Nenhuma alteração pendente.</span></div>
