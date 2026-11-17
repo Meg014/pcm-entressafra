@@ -51,6 +51,7 @@ SQL;
     }
     public static function allows(string $sql): bool
     {
+        if ($sql === Equipment::sql()) { return true; }
         if ($sql === self::CORRECTIVE_SERVICES) { return true; }
         if($sql===PendingOrders::sql()) { return true; }
         if($sql===self::ORDER_NOTES) { return true; }

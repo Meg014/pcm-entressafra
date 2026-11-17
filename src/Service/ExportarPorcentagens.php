@@ -7,7 +7,7 @@ use PhpOffice\PhpSpreadsheet\{Spreadsheet, Cell\Coordinate, Cell\DataType, Style
 /** Persisted percentages; description fallback uses the same read-only source as the grid. */
 final class ExportarPorcentagens
 {
-    public function __construct(private ?\App\Integration\Totvs\ListOrders $source = null) {}
+    public function __construct(private ?\App\Integration\Totvs\ListOrders $source = null, private ?EquipmentNames $equipment = null) {}
 
     public function workbook($user, int $season, int $area, ?\DateTimeImmutable $now = null): Spreadsheet
     {
@@ -44,6 +44,7 @@ final class ExportarPorcentagens
         $row = 6;
         $seen = [];
         $missing = [];
+        $equipmentItems = [];
         foreach ($query->all() as $a) {
             $key = $a->os_chave ?: $a->os_filial.':'.$a->os_numero;
             if (isset($seen[$key])) continue;
@@ -53,7 +54,7 @@ final class ExportarPorcentagens
             $text('B'.$row, self::cleanDescription($description));
             if ($description === 'Descrição não informada') $missing[$a->os_numero] = $row;
             $sheet->getRowDimension($row)->setRowHeight(-1);
-            $text('C'.$row, (string)$a->bem);
+            $equipmentItems[$row] = ['bem'=>$a->bem, 'filial'=>$a->os_filial, 'snapshot'=>json_decode($a->snapshot_totvs ?? '{}', true) ?? []];
             $history = $evolution->history((int)$a->id);
             $latest = null;
             foreach ($weeks as $i=>$week) {
@@ -77,6 +78,7 @@ final class ExportarPorcentagens
                 // Keep available local descriptions when the read-only source is unavailable.
             }
         }
+        foreach (($this->equipment ?? new EquipmentNames())->resolve($equipmentItems) as $index=>$name) $text('C'.$index, $name);
         $lastRow = max(5, $row-1);
         $sheet->getStyle('A1')->getFont()->setBold(true)->setSize(16);
         $sheet->getStyle('A5:'.$lastColumn.'5')->applyFromArray(['font'=>['bold'=>true,'color'=>['argb'=>'FFFFFFFF']], 'fill'=>['fillType'=>Fill::FILL_SOLID,'startColor'=>['argb'=>'FF234E70']]]);

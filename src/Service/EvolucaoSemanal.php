@@ -5,7 +5,7 @@ namespace App\Service;
 /** Weekly spreadsheet over the existing append-only percentage history. */
 final class EvolucaoSemanal
 {
-    public function __construct(private ?\DateTimeImmutable $now=null,private ?\App\Integration\Totvs\ListOrders $source=null) {}
+    public function __construct(private ?\DateTimeImmutable $now=null,private ?\App\Integration\Totvs\ListOrders $source=null,private ?EquipmentNames $equipment=null) {}
     private function today(): string {return ($this->now??new \DateTimeImmutable('now'))->setTimezone(new \DateTimeZone('America/Sao_Paulo'))->format('Y-m-d');}
     public function weeks(int $season): array
     {
@@ -37,12 +37,14 @@ final class EvolucaoSemanal
         $weeks=$this->weeks($season);$rows=[];$total=0;$pages=1;$page=max(1,$page);$reference=$weeks?end($weeks)['fim']:null;
         if($area||$search!==''){
             $q=$this->scope($user,$season,$area);if($search!=='')$q->where(['Atividades.os_numero LIKE'=>'%'.$search.'%']);$total=$q->count();$pages=max(1,(int)ceil($total/50));$page=min($page,$pages);
-            $e=new Evolucao();$e->loadHistory($season);
+            $e=new Evolucao();$e->loadHistory($season);$equipmentItems=[];
             foreach($q->orderBy(['Atividades.os_numero'=>'ASC','Atividades.id'=>'ASC'])->limit(50)->offset(($page-1)*50)->all() as $a){
+                $equipmentItems[count($rows)]=['bem'=>$a->bem,'filial'=>$a->os_filial,'snapshot'=>json_decode($a->snapshot_totvs??'{}',true)??[]];
                 $history=$e->history((int)$a->id);$cells=[];
                 foreach($weeks as $w){$cell=self::cell($history,$w);$state=$e->state((int)$a->id,$w['fim']);$cells[$w['fim']]=['valor'=>$cell===null?null:(float)$cell['percentual'],'registro_id'=>(int)($cell['id']??0),'revisao'=>(int)($cell['revisao']??0),'acumulado'=>$state['percentual']];}
                 $rows[]=['id'=>(int)$a->id,'numero'=>$a->os_numero,'descricao'=>OsApresentacao::description($a->descricao_atividade,json_decode($a->snapshot_totvs??'{}',true)??[]),'bem'=>$a->bem,'percentual'=>$reference?$e->state((int)$a->id,$reference)['percentual']:0,'cells'=>$cells];
             }
+            foreach(($this->equipment??new EquipmentNames())->resolve($equipmentItems) as $i=>$name)$rows[$i]['equipamento']=$name;
             $missing=[];foreach($rows as $i=>$row)if($row['descricao']==='Descrição não informada')$missing[$row['numero']]=$i;
             if($missing)try{foreach(($this->source??new \App\Integration\Totvs\ListOrders())->find(array_map('strval',array_keys($missing))) as $number=>$note)if(isset($missing[$number]))$rows[$missing[$number]]['descricao']=OsApresentacao::description(null,$note);}catch(\DomainException){}
         }
