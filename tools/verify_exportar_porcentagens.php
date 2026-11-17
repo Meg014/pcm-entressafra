@@ -19,7 +19,7 @@ try {
     foreach($areas as $area=>$name) {
         $book=(new ExportarPorcentagens())->workbook($user,$season,(int)$area);
         $sheet=$book->getActiveSheet();
-        $orders=$db->execute("SELECT a.* FROM atividades a LEFT JOIN cadernos c ON c.id=a.caderno_id WHERE a.entressafra_id=? AND a.tipo_planejamento='PROGRAMADA' AND COALESCE(a.area_curva_id,c.area_curva_id)=? ORDER BY a.os_numero,a.id",[$season,$area])->fetchAll('assoc');
+        $orders=$db->execute("SELECT a.* FROM atividades a JOIN cadernos c ON c.id=a.caderno_id AND c.entressafra_id=a.entressafra_id WHERE a.entressafra_id=? AND a.tipo_planejamento='PROGRAMADA' AND c.area_curva_id=? ORDER BY a.os_numero,a.id",[$season,$area])->fetchAll('assoc');
         $seen=[];$row=6;$empty=0;$zeros=0;
         foreach($orders as $a) {
             $key=$a['os_chave']?:$a['os_filial'].':'.$a['os_numero'];if(isset($seen[$key]))continue;$seen[$key]=true;

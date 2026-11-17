@@ -7,7 +7,14 @@ Envia explicitamente a entressafra ativa e o setor selecionado, sem pesquisa ou
 paginação. O download via fetch e Blob não navega, salva alterações ou aciona
 beforeunload. HTML/JSON não são aceitos como Excel; erros aparecem na própria tela.
 Os setores são as áreas utilizadas na grade de porcentagens. São exportadas todas as
-O.S. PROGRAMADA da área, inclusive sem caderno quando possuem classificação direta.
+O.S. PROGRAMADA vinculadas aos cadernos cujo setor principal (`cadernos.area_curva_id`)
+corresponde ao setor selecionado, com caderno e atividade na mesma entressafra.
+A regra é a mesma de `PorcentagensLote`; `cadernos_setores` representa equipes
+executantes e não substitui o setor principal. O.S. sem caderno ficam excluídas.
+Somente no Excel, perguntas reconhecidas do checklist com caixas sim/não são
+removidas. A descrição principal e textos posteriores são preservados. Quebras
+residuais são compactadas e a altura permanece automática. Descrições comuns
+permanecem integrais, inclusive suas quebras de linha.
 As células semanais usam o último registro/revisão da semana, pelo mesmo calendário
 da grade. Ausência permanece vazia; zero explícito permanece numérico. O percentual
 mais recente fica vazio para O.S. sem registros nas semanas iniciadas.

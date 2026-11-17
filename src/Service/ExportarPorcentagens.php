@@ -31,11 +31,14 @@ final class ExportarPorcentagens
         $headers = ['Número da O.S.', 'Descrição da atividade', 'Equipamento', 'Percentual mais recente'];
         foreach ($weeks as $w) $headers[] = $w['semana'].'ª semana — '.date('d/m/Y', strtotime($w['inicio'])).' a '.date('d/m/Y', strtotime($w['fim']));
         $sheet->fromArray($headers, null, 'A5');
-        $query = Access::table('Atividades')->find()->leftJoinWith('Cadernos')->where([
+        // Same notebook membership as PorcentagensLote::scope; executor sectors
+        // and activity-level Curva S overrides do not define notebook membership.
+        $query = Access::table('Atividades')->find()->innerJoinWith('Cadernos', fn($q) => $q->where([
+            'Cadernos.entressafra_id'=>$season, 'Cadernos.area_curva_id'=>$area,
+        ]))->where([
             'Atividades.entressafra_id'=>$season,
             'Atividades.tipo_planejamento'=>Planejamento::PROGRAMADA,
-            'COALESCE(Atividades.area_curva_id,Cadernos.area_curva_id)'=>$area,
-        ], ['COALESCE(Atividades.area_curva_id,Cadernos.area_curva_id)'=>'integer'])->orderBy(['Atividades.os_numero'=>'ASC', 'Atividades.id'=>'ASC']);
+        ])->orderBy(['Atividades.os_numero'=>'ASC', 'Atividades.id'=>'ASC']);
         $evolution = new Evolucao();
         $evolution->loadHistory($season);
         $row = 6;
@@ -47,7 +50,7 @@ final class ExportarPorcentagens
             $seen[$key] = true;
             $text('A'.$row, (string)$a->os_numero);
             $description = OsApresentacao::description($a->descricao_atividade, json_decode($a->snapshot_totvs ?? '{}', true) ?? []);
-            $text('B'.$row, $description);
+            $text('B'.$row, self::cleanDescription($description));
             if ($description === 'Descrição não informada') $missing[$a->os_numero] = $row;
             $sheet->getRowDimension($row)->setRowHeight(-1);
             $text('C'.$row, (string)$a->bem);
@@ -68,7 +71,7 @@ final class ExportarPorcentagens
             try {
                 $notes = ($this->source ?? new \App\Integration\Totvs\ListOrders())->find($numbers);
                 foreach ($notes as $number => $note) {
-                    if (isset($missing[$number])) $text('B'.$missing[$number], OsApresentacao::description(null, $note));
+                    if (isset($missing[$number])) $text('B'.$missing[$number], self::cleanDescription(OsApresentacao::description(null, $note)));
                 }
             } catch (\DomainException) {
                 // Keep available local descriptions when the read-only source is unavailable.
@@ -86,5 +89,25 @@ final class ExportarPorcentagens
         $sheet->setAutoFilter('A5:'.$lastColumn.$lastRow);
         $sheet->getPageSetup()->setOrientation(PageSetup::ORIENTATION_LANDSCAPE)->setPaperSize(PageSetup::PAPERSIZE_A3)->setFitToWidth(1)->setFitToHeight(0)->setRowsToRepeatAtTopByStartAndEnd(1,5)->setColumnsToRepeatAtLeftByStartAndEnd('A','C')->setPrintArea('A1:'.$lastColumn.$lastRow);
         return $book;
+    }
+
+    /** Remove only recognizable checklist questions followed by checkbox answers. */
+    public static function cleanDescription(string $description): string
+    {
+        // Accent classes keep matches on the original text, preserving all other bytes.
+        $questions = [
+            'ferramentas?\s+limp[ao]s?\s+antes\s+d[oe]\s+servi[çc]o',
+            'equipamentos?\s+limp[ao]s?\s+(?:ap[oó]s|depois\s+d[oe])\s+(?:o\s+)?servi[çc]o',
+            'sobras?\s+de\s+materia(?:is|l)\s+recolhid[ao]s?',
+            'prote[çc][oõ]es\s*,?\s*bot[oõ]es\s+e\s+sinaliza[çc][aã]o\s+conforme\s+(?:a\s+)?nr\s*[-–]?\s*12',
+            'condi[çc][oõ]es\s+de\s+seguran[çc]a\s+mantidas\s+(?:ap[oó]s|depois\s+d[oe])\s+(?:o\s+)?servi[çc]o',
+        ];
+        $box = '[\(\[]\s*[xX]?\s*[\)\]]';
+        $answers = '\s*'.$box.'\s*sim\s*'.$box.'\s*n[aã]o(?:\s*'.$box.'\s*n\s*[/\\\\]?\s*a)?';
+        $clean = preg_replace('~\b(?:'.implode('|', $questions).')\s*[?:]?'.$answers.'~iu', '', $description);
+        if ($clean === null || $clean === $description) return $description;
+        $clean = preg_replace('/[\h]+/u', ' ', $clean);
+        $clean = preg_replace('/ *\R */u', "\n", $clean);
+        return trim(preg_replace('/\n{2,}/', "\n", $clean));
     }
 }

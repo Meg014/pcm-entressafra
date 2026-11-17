@@ -24,6 +24,38 @@ class PorcentagensLoteTest extends TestCase
     protected function tearDown(): void {PeriodoContexto::set(null);parent::tearDown();}
     private function login(int $id): void {$u=Access::actor($id);$this->session(['Auth'=>['id'=>$id,'stamp'=>hash('sha256',$u->senha_hash),'last'=>time()],'Periodo'=>['id'=>$this->season,'usuario_id'=>$id]]);}
     private function row(int $index,float $value,float $base=0,int $revision=0): array {return ['atividade_id'=>$this->ids[$index],'percentual'=>$value,'base'=>$base,'revisao'=>$revision,'referencia'=>$this->reference];}
+    public function testExcelChecklistAndNotebookMembership(): void
+    {
+        $t=Access::table('Atividades');
+        $checklist="\nferramentas limpas antes do serviço? ( ) sim ( ) não ( ) n/a\nequipamento limpo após o serviço? ( ) sim ( ) não ( ) n/a\nsobras de materiais recolhidas? ( ) sim ( ) não ( ) n/a\nproteções, botões e sinalização conforme nr-12? ( ) sim ( ) não\ncondições de segurança mantidas após o serviço? ( ) sim ( ) não";
+        $original='FAZER MANUTENÇÃO.'.$checklist."\n\nObservação útil após o checklist.";
+        $a=$t->get($this->ids[0]);$a->descricao_atividade=$original;$t->saveOrFail($a);
+        // An activity override cannot pull another notebook into this export.
+        $a=$t->get($this->ids[260]);$a->area_curva_id=$this->areas[0];$t->saveOrFail($a);
+        // Nor can an override remove an activity belonging to this notebook.
+        $a=$t->get($this->ids[1]);$a->area_curva_id=$this->areas[1];$t->saveOrFail($a);
+        $a=$t->get($this->ids[2]);$a->caderno_id=null;$a->area_curva_id=$this->areas[0];$t->saveOrFail($a);
+        $a=$t->get($this->ids[3]);$a->tipo_planejamento=\App\Service\Planejamento::CORRETIVA;$t->saveOrFail($a);
+        $books=Access::table('Cadernos');
+        $extra=$books->saveOrFail(Access::entity($books,['nome'=>'Segundo caderno','entressafra_id'=>$this->season,'area_curva_id'=>$this->areas[0],'ativo'=>true]));
+        $links=Access::table('CadernosSetores');
+        $links->saveOrFail(Access::entity($links,['caderno_id'=>$extra->id,'setor_id'=>$this->teams[1]]));
+        $a=$t->get($this->ids[4]);$a->caderno_id=$extra->id;$t->saveOrFail($a);
+        $book=(new \App\Service\ExportarPorcentagens())->workbook(Access::actor($this->admin),$this->season,$this->areas[0]);
+        $sheet=$book->getActiveSheet();$numbers=[];
+        for($r=6;$r<=$sheet->getHighestRow();$r++)$numbers[]=$sheet->getCell('A'.$r)->getValue();
+        $this->assertCount(258,$numbers);$this->assertSame($numbers,array_values(array_unique($numbers)));
+        $this->assertContains('006001',$numbers);
+        $this->assertContains('006004',$numbers);
+        foreach(['006002','006003','006260'] as $number)$this->assertNotContains($number,$numbers);
+        $this->assertSame("FAZER MANUTENÇÃO.\nObservação útil após o checklist.",$sheet->getCell('B6')->getValue());
+        $this->assertSame(-1.0,$sheet->getRowDimension(6)->getRowHeight());
+        $this->assertSame($original,$t->get($this->ids[0])->descricao_atividade);
+        $this->assertSame('FAZER MANUTENÇÃO.',\App\Service\ExportarPorcentagens::cleanDescription('FAZER MANUTENÇÃO.'.mb_strtoupper($checklist)));
+        $plain="Limpar ferramentas e manter condições de segurança.\nConferir equipamento limpo após o serviço.";
+        $this->assertSame($plain,\App\Service\ExportarPorcentagens::cleanDescription($plain));
+        $book->disconnectWorksheets();
+    }
     public function testExcelDescriptionsMatchGridAndPreserveCompleteText(): void
     {
         $user=Access::actor($this->admin);
