@@ -96,18 +96,25 @@ final class ExportarPorcentagens
     {
         // Accent classes keep matches on the original text, preserving all other bytes.
         $questions = [
-            'ferramentas?\s+limp[ao]s?\s+antes\s+d[oe]\s+servi[çc]o',
-            'equipamentos?\s+limp[ao]s?\s+(?:ap[oó]s|depois\s+d[oe])\s+(?:o\s+)?servi[çc]o',
-            'sobras?\s+de\s+materia(?:is|l)\s+recolhid[ao]s?',
+            '(?:as?\s+)?ferramentas?\s+(?:foram\s+|foi\s+)?limp[ao]s?\s+antes\s+d[oe]\s+servi[çc]o',
+            '(?:os?\s+)?equipamentos?\s+(?:foi\s+|foram\s+)?limp[ao]s?\s+(?:ap[oó]s|depois\s+d[oe])\s+(?:o\s+)?servi[çc]o',
+            '(?:toda\s+a\s+)?sobras?\s+de\s+materia(?:is|l)\s+(?:foi\s+|foram\s+)?recolhid[ao]s?',
             'prote[çc][oõ]es\s*,?\s*bot[oõ]es\s+e\s+sinaliza[çc][aã]o\s+conforme\s+(?:a\s+)?nr\s*[-–]?\s*12',
             'condi[çc][oõ]es\s+de\s+seguran[çc]a\s+mantidas\s+(?:ap[oó]s|depois\s+d[oe])\s+(?:o\s+)?servi[çc]o',
+            '(?:as\s+)?condi[çc][oõ]es\s+de\s+seguran[çc]a\s*\(\s*prote[çc][aã]o\s*[/,]\s*bot[oõ]es\s*[/,]\s*sinaliza[çc][aã]o\s*\)\s*(?:est[aã]o\s+)?conforme\s*\(?\s*nr\s*[-–]?\s*12\s*\)?',
+            '(?:a\s+)?conclus[aã]o\s+d[oe]\s+servi[çc]o\s*,?\s*(?:e\s+as\s+condi[çc][oõ]es\s+de\s+seguran[çc]a\s+foram\s+mantidas\s+conforme\s*\(?\s*nr\s*[-–]?\s*12\s*\)?|manteve\s+as\s+condi[çc][oõ]es\s+de\s+seguran[çc]a)',
         ];
         $box = '[\(\[]\s*[xX]?\s*[\)\]]';
-        $answers = '\s*'.$box.'\s*sim\s*'.$box.'\s*n[aã]o(?:\s*'.$box.'\s*n\s*[/\\\\]?\s*a)?';
-        $clean = preg_replace('~\b(?:'.implode('|', $questions).')\s*[?:]?'.$answers.'~iu', '', $description);
+        $answers = '\s*'.$box.'\s*sim\s*[,;/]?\s*'.$box.'\s*n[aã]o(?:\s*[,;/]?\s*'.$box.'\s*(?:n[aã]o\s+aplic[aá]vel|n\s*[/\\\\]?\s*a))?';
+        // Allow punctuation/line wrapping between words without normalizing useful text.
+        $pattern = implode('|', $questions);
+        $pattern = str_replace('\\s+', '[\\s\\p{Z},;:]+', $pattern);
+        $clean = preg_replace('~\b(?:'.$pattern.')\s*[?.:!]*'.$answers.'[.;]?~iu', '', $description);
         if ($clean === null || $clean === $description) return $description;
         $clean = preg_replace('/[\h]+/u', ' ', $clean);
         $clean = preg_replace('/ *\R */u', "\n", $clean);
-        return trim(preg_replace('/\n{2,}/', "\n", $clean));
+        $clean = trim(preg_replace('/\n{2,}/', "\n", $clean));
+        // This exact service label is misspelled in the real TOTVS checklist template.
+        return preg_match('/^FAZER MANUTEN[ÇC][AÃ]O$/iu', $clean) ? 'FAZER MANUTENÇÃO' : $clean;
     }
 }

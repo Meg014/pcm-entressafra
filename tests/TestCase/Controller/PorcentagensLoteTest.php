@@ -24,6 +24,49 @@ class PorcentagensLoteTest extends TestCase
     protected function tearDown(): void {PeriodoContexto::set(null);parent::tearDown();}
     private function login(int $id): void {$u=Access::actor($id);$this->session(['Auth'=>['id'=>$id,'stamp'=>hash('sha256',$u->senha_hash),'last'=>time()],'Periodo'=>['id'=>$this->season,'usuario_id'=>$id]]);}
     private function row(int $index,float $value,float $base=0,int $revision=0): array {return ['atividade_id'=>$this->ids[$index],'percentual'=>$value,'base'=>$base,'revisao'=>$revision,'referencia'=>$this->reference];}
+    public function testRealChecklistDescriptionsInReopenedExcel(): void
+    {
+        // Exact descriptions read from TOTVS on 2026-11-17, including the full checklist.
+        $real=json_decode(file_get_contents(ROOT.'/tests/Fixture/Files/checklist-real-descriptions.json'),true,512,JSON_THROW_ON_ERROR);
+        $expected=['006974'=>'FAZER MANUTENÇÃO.','006975'=>'RETIRADA EIXOS DA MESA ALIMENTADORA E MONTAGEM DO EIXO DE ACIONAMNETO DA MESA','007188'=>'FAZER MANUTENÇÃO','007189'=>'FAZER MANUTENÇÃO'];
+        $t=Access::table('Atividades');$originals=[];
+        foreach(array_keys($real) as $i=>$number){
+            $a=$t->get($this->ids[$i]);$a->os_numero=(string)$number;$a->os_chave='01:'.$number;
+            $a->descricao_atividade=$i===3?null:$real[$number];$a->snapshot_totvs='{}';
+            $t->saveOrFail($a);$originals[$a->id]=[$a->descricao_atividade,$a->snapshot_totvs];
+        }
+        $source=new \App\Integration\Totvs\ListOrders(static function()use($real):array{
+            return [['numero'=>'007189','filial'=>'01','descricao_totvs'=>$real['007189'],'codigo_servico'=>'1','codigo_area'=>'MECANI','centro_custo'=>'CC','data_origem'=>'20260101','situacao'=>'L','termino'=>'N','bem'=>'BEM']];
+        });
+        $book=(new \App\Service\ExportarPorcentagens($source))->workbook(Access::actor($this->admin),$this->season,$this->areas[0]);
+        $path=tempnam(TMP,'real-checklist-');$loaded=null;
+        try{
+            (new \PhpOffice\PhpSpreadsheet\Writer\Xlsx($book))->save($path);
+            $loaded=\PhpOffice\PhpSpreadsheet\IOFactory::load($path);$sheet=$loaded->getActiveSheet();$found=[];
+            for($r=6;$r<=$sheet->getHighestRow();$r++){
+                $number=$sheet->getCell('A'.$r)->getValue();if(!isset($expected[$number]))continue;
+                $found[$number]=$sheet->getCell('B'.$r)->getValue();
+                $this->assertSame($expected[$number],$found[$number],$number);
+                $this->assertSame(-1.0,$sheet->getRowDimension($r)->getRowHeight());
+            }
+            $this->assertCount(4,$found);
+            foreach($originals as $id=>$values){$a=$t->get($id);$this->assertSame($values,[$a->descricao_atividade,$a->snapshot_totvs]);}
+        }finally{if($loaded)$loaded->disconnectWorksheets();$book->disconnectWorksheets();unlink($path);}
+    }
+
+    public function testChecklistVariationsKeepUsefulText(): void
+    {
+        $real=json_decode(file_get_contents(ROOT.'/tests/Fixture/Files/checklist-real-descriptions.json'),true);
+        $checklist=substr($real['007188'],strpos($real['007188'],"\r\n"));
+        $clean=\App\Service\ExportarPorcentagens::cleanDescription(...);
+        $this->assertSame('', $clean($checklist));
+        $this->assertSame("Trocar ferramentas e limpar proteções.\nConferir segurança após montagem.",$clean('Trocar ferramentas e limpar proteções.'.$checklist."\nConferir segurança após montagem."));
+        $variant=mb_strtoupper(str_replace(["\r\n",'serviço','não','aplicável','proteção','botões','sinalização','condições','segurança','estão','conclusão'],[" \n ",'servico','nao','aplicavel','protecao','botoes','sinalizacao','condicoes','seguranca','estao','conclusao'],$checklist));
+        $this->assertSame('FAZER MANUTENÇÃO',$clean('FAZER MANUTENÇÃO'.$variant));
+        $this->assertSame('', $clean('A conclusão do serviço manteve as condições de segurança? ( ) sim ( ) não'));
+        $plain="As ferramentas foram limpas antes do serviço? Confirmar com a equipe.\nLimpeza e segurança são parte da manutenção.";
+        $this->assertSame($plain,$clean($plain));
+    }
     public function testExcelChecklistAndNotebookMembership(): void
     {
         $t=Access::table('Atividades');
