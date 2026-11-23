@@ -10,10 +10,10 @@ if (!is_string($selectedLabel)) { $selectedLabel = ''; }
     <button type="button" id="funcionario-limpar" class="btn btn-outline-secondary">Limpar</button></div>
     <?= $this->Form->hidden('funcionario_chave', ['id'=>'funcionario-chave','value'=>$selectedKey]) ?>
     <div id="funcionario-resultados" role="listbox" aria-label="Funcionários encontrados" class="border rounded bg-white mt-1 overflow-auto" style="max-height:300px" hidden></div>
-    <p id="funcionario-aviso" role="status" class="small text-secondary mt-2">Digite pelo menos 2 caracteres e selecione um funcionário NORMAL. O nome exibido vem de RA_NOME e pode estar abreviado no TOTVS.</p>
+    <p id="funcionario-aviso" role="status" class="small text-secondary mt-2">Digite pelo menos 2 caracteres e selecione um funcionário da lista. O nome exibido vem de RA_NOME e pode estar abreviado no TOTVS.</p>
     <div id="funcionario-resumo" class="border-bottom py-2" role="status" aria-live="polite" <?= $selectedEmployee ? '' : 'hidden' ?>>
         <div class="d-flex align-items-center justify-content-between gap-2">
-            <div><strong id="funcionario-resumo-nome"><?= h($selectedEmployee['nome'] ?? '') ?></strong><small id="funcionario-resumo-matricula" class="d-block text-secondary"><?= $selectedEmployee ? h('Matrícula '.$selectedEmployee['matricula']) : '' ?></small></div>
+            <div><strong id="funcionario-resumo-nome"><?= h($selectedLabel) ?><?= ($selectedEmployee['situacao_codigo'] ?? '') === 'F' ? ' · Férias (TOTVS)' : '' ?></strong><small id="funcionario-resumo-matricula" class="d-block text-secondary"><?= $selectedEmployee ? h('Matrícula '.$selectedEmployee['matricula']) : '' ?></small></div>
             <span class="badge bg-success">✓ Selecionado</span>
         </div>
     </div>

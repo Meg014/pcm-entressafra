@@ -16,13 +16,14 @@ window.initEmployeeAutocomplete = (root) => {
   const reset = () => {
     key.value = ''; selectedName.textContent = ''; selectedNumber.textContent = ''; summary.hidden = true;
   };
+  const displayName = person => person.situacao_codigo === 'F' ? `${person.nome} · Férias (TOTVS)` : person.nome;
   const choose = person => {
     if (person.ativo !== true) return;
     message.dataset.lookupError='0';
     clearTimeout(timer); if (controller) controller.abort(); ++version;
     key.value = person.chave;
-    input.value = person.nome;
-    selectedName.textContent = person.nome; selectedNumber.textContent = `Matrícula ${person.matricula}`; summary.hidden = false;
+    input.value = displayName(person);
+    selectedName.textContent = displayName(person); selectedNumber.textContent = `Matrícula ${person.matricula}`; summary.hidden = false;
     input.setCustomValidity(''); message.textContent = 'Funcionário selecionado. O servidor confirmará a matrícula e a situação ao salvar.';
     close(); input.focus();
   };
@@ -47,13 +48,13 @@ window.initEmployeeAutocomplete = (root) => {
           const option = document.createElement('button'); option.type = 'button';
           option.id = `${list.id}-${index}`; option.setAttribute('role','option'); option.setAttribute('aria-selected','false');
           option.className = 'd-block w-100 text-start border-0 border-bottom p-3 bg-white';
-          option.textContent = `${person.nome} · Matrícula ${person.matricula} · ${person.situacao}${person.bloqueio ? ' · ' + person.bloqueio : ''}`;
+          option.textContent = `${displayName(person)} · Matrícula ${person.matricula}${person.situacao_codigo === 'F' ? '' : ' · ' + person.situacao}${person.bloqueio ? ' · ' + person.bloqueio : ''}`;
           option.disabled = person.ativo !== true; option.setAttribute('aria-disabled',String(option.disabled));
           option.addEventListener('mousedown',event => event.preventDefault()); option.addEventListener('click',() => choose(person)); list.append(option);
         });
         list.hidden = data.results.length === 0; input.setAttribute('aria-expanded',String(!list.hidden));
         message.dataset.lookupError=(data.warning || !data.results.length)?'1':'0';
-        message.textContent = data.warning || (data.has_more ? 'Mostrando os primeiros 20 resultados. Refine o nome ou a matrícula.' : (data.results.length ? 'Selecione um funcionário NORMAL. Férias e outras situações estão bloqueadas.' : 'Nenhum funcionário encontrado.'));
+        message.textContent = data.warning || (data.has_more ? 'Mostrando os primeiros 20 resultados. Refine o nome ou a matrícula.' : (data.results.length ? 'Selecione um funcionário da lista.' : 'Nenhum funcionário encontrado.'));
       } catch (error) {
         if (error.name !== 'AbortError' && current === version) { close(); message.dataset.lookupError='1'; message.textContent = error.message; }
       }

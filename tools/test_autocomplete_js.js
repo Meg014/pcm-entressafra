@@ -30,9 +30,9 @@ async function testAutocomplete(employeeSource, orderSource, withoutFilters=fals
     const originalValues = JSON.stringify(Object.values(form.elements).map(field=>field.value));
     const timers = new Map(); let timerId = 0, calls = 0, url, fail = false, rows;
     const normal = {chave:'000123', nome:'Pessoa de teste', matricula:'000123', funcao:'00001', situacao:'NORMAL', ativo:true};
-    const blocked = {...normal, chave:'', ativo:false, situacao:'FÉRIAS'};
+    const blocked = {...normal, chave:'', ativo:false, bloqueio:'Matrícula ambígua'};
     const linked = {id:'9', selecionavel:true, numero:'005523', filial:'01', centro_custo:'CC-INTERNO', servico:'ENTRESSAFRA', codigo_area:'CALDEI', setor_id:'7', setor:'Setor', caderno:'Caderno', situacao:'L',descricao:'Trocar vedação conforme caderno',setor_apresentacao:'DESTILARIA',rotulo_setor:'Setor'};
-    rows = employee ? [blocked, normal, {...blocked,bloqueio:'Matrícula ambígua'}] : [{...linked,id:null,selecionavel:false,aviso:'Solicite vínculo ao PCM'},linked];
+    rows = employee ? [blocked, normal, {...normal, chave:'000124', matricula:'000124', situacao:'FÉRIAS', situacao_codigo:'F'}] : [{...linked,id:null,selecionavel:false,aviso:'Solicite vínculo ao PCM'},linked];
     const document = {getElementById:get, createElement:tag=>new Element(tag), addEventListener() {}};
     let identified=false;
     const fetch = async (target,options) => { if(options?.method==='POST'){identified=JSON.parse(options.body).os_chave==='os-nova';return {ok:true,redirected:false,json:async()=>({order:linked})};}calls++; url = target; if (fail) throw new Error('Falha de conexão'); return {ok:true, redirected:false, json:async()=>({results:rows,has_more:false,message:'Sem resultado'})}; };
@@ -52,6 +52,9 @@ async function testAutocomplete(employeeSource, orderSource, withoutFilters=fals
     }
     if (employee) {
       assert(!get('funcionario-resumo').hidden && get('funcionario-resumo-nome').textContent === normal.nome && get('funcionario-resumo-matricula').textContent === 'Matrícula 000123', 'employee: compact confirmed summary');
+      assert(list.children[2].textContent.includes(normal.nome + ' · Férias (TOTVS)'), 'employee: vacation search label');
+      list.children[2].click();
+      assert(key.value === '000124' && get('funcionario-resumo-nome').textContent === normal.nome + ' · Férias (TOTVS)', 'employee: vacation selection');
       assert(!elements['funcionario-nome'] && !elements['funcionario-matricula'] && !elements['funcionario-funcao'] && !elements['funcionario-situacao'], 'employee: removed fields are never accessed');
     }
     assert(JSON.stringify(Object.values(form.elements).map(field=>field.value)) === originalValues, prefix + ': other form values preserved');

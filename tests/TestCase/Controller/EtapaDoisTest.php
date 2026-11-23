@@ -467,11 +467,10 @@ class EtapaDoisTest extends TestCase
     }
     public function testEmployeeStatusesCannotBeForgedByFrontend(): void
     {
-        foreach(['F','D','A','X'] as $status) {
+        foreach(['D','A','X'] as $status) {
             $lookup=new \App\Integration\Totvs\Employees(fn($sql)=>$sql===\App\Integration\Totvs\Queries::EMPLOYEE_DUPLICATES?[]:[['RA_NOME'=>'Nome teste','RA_MAT'=>'000123','elegiveis'=>1,'RA_CODFUNC'=>'00123','RA_SITFOLH'=>$status,'RA_FILIAL'=>'01','R_E_C_N_O_'=>123]]);
             $people=$lookup->search('Nome');
-            if ($status==='F') { $this->assertSame('FÉRIAS',$people[0]['situacao']); $this->assertFalse($people[0]['ativo']); }
-            else { $this->assertSame([],$people); }
+            $this->assertSame([],$people);
             $gateway=$this->createMock(\App\Integration\Totvs\GatewayInterface::class);
             $gateway->method('employee')->willReturnCallback(fn($key)=>$lookup->find($key));
             $input=$this->input(); $input['funcionario_chave']='000123'; $input['ativo']=true;
@@ -481,7 +480,7 @@ class EtapaDoisTest extends TestCase
     }
     public function testConfirmedEmployeeMapperIntegratesWithGlobalConflict(): void
     {
-        $lookup=new \App\Integration\Totvs\Employees(fn($sql)=>$sql===\App\Integration\Totvs\Queries::EMPLOYEE_DUPLICATES?[]:[['RA_NOME'=>'Nome teste','RA_MAT'=>'000123','elegiveis'=>1,'RA_CODFUNC'=>'00123','RA_SITFOLH'=>'','RA_FILIAL'=>'01','R_E_C_N_O_'=>123]]);
+        $lookup=new \App\Integration\Totvs\Employees(fn($sql)=>$sql===\App\Integration\Totvs\Queries::EMPLOYEE_DUPLICATES?[]:[['RA_NOME'=>'Nome teste','RA_MAT'=>'000123','elegiveis'=>1,'RA_CODFUNC'=>'00123','RA_SITFOLH'=>'F','RA_FILIAL'=>'01','R_E_C_N_O_'=>123]]);
         $person=$lookup->search('Nome')[0];
         $gateway=$this->createMock(\App\Integration\Totvs\GatewayInterface::class);
         $gateway->method('employee')->willReturnCallback(fn($key)=>$lookup->find($key));
@@ -499,7 +498,7 @@ class EtapaDoisTest extends TestCase
         $this->assertResponseContains('id="row-0-funcionario-resumo"');
         $this->assertResponseContains('id="row-0-funcionario-chave"');
         foreach (['funcionario_exibicao_','Nome cadastral','Código da função','id="funcionario-nome"','id="funcionario-matricula"','id="funcionario-funcao"','id="funcionario-situacao"'] as $removed) { $this->assertResponseNotContains($removed); }
-        $lookup=new \App\Integration\Totvs\Employees(fn()=>[['RA_NOME'=>'Pessoa confirmada','RA_MAT'=>'000123','RA_CODFUNC'=>'00123','RA_SITFOLH'=>'','elegiveis'=>1]]);
+        $lookup=new \App\Integration\Totvs\Employees(fn()=>[['RA_NOME'=>'Pessoa confirmada','RA_MAT'=>'000123','RA_CODFUNC'=>'00123','RA_SITFOLH'=>'F','elegiveis'=>1]]);
         $gateway=$this->createMock(\App\Integration\Totvs\GatewayInterface::class);
         $gateway->method('employee')->willReturnCallback(fn($key)=>$lookup->find($key));
         $input=$this->input(); $input['funcionario_chave']='000123';
@@ -507,10 +506,10 @@ class EtapaDoisTest extends TestCase
         $before=Access::table('Apontamentos')->get($id);
         $snapshot=json_decode($before->snapshot,true,512,JSON_THROW_ON_ERROR);
         $this->assertSame('00123',$snapshot['funcionario']['funcao']);
-        $this->assertSame('NORMAL',$snapshot['funcionario']['situacao']);
+        $this->assertSame('FÉRIAS',$snapshot['funcionario']['situacao']);
         $this->assertSame('000123',$before->funcionario_matricula);
         $this->get('/apontamentos/edit/'.$id); $this->assertResponseOk();
-        $this->assertResponseContains('Pessoa confirmada'); $this->assertResponseContains('Matrícula 000123');
+        $this->assertResponseContains('Pessoa confirmada · Férias (TOTVS)'); $this->assertResponseContains('Matrícula 000123');
         $this->assertResponseContains('Identificação preservada'); $this->assertResponseNotContains('funcionario_exibicao_');
         $this->enableCsrfToken();
         $this->post('/apontamentos/edit/'.$id,$input+['motivo'=>'Conferência do serviço','funcionario_nome'=>'Nome adulterado']);
@@ -648,7 +647,7 @@ class EtapaDoisTest extends TestCase
         $gateway=$this->createMock(\App\Integration\Totvs\GatewayInterface::class);
         $lookup=new \App\Integration\Totvs\Employees(fn()=>[
             ['RA_NOME'=>'Nome teste','RA_MAT'=>'000123','RA_CODFUNC'=>'00001','RA_SITFOLH'=>'','elegiveis'=>1],
-            ['RA_NOME'=>'Nome teste','RA_MAT'=>'000124','RA_CODFUNC'=>'00002','RA_SITFOLH'=>'F','elegiveis'=>0],
+            ['RA_NOME'=>'Nome teste','RA_MAT'=>'000124','RA_CODFUNC'=>'00002','RA_SITFOLH'=>'F','elegiveis'=>1],
         ]);
         $gateway->expects($this->once())->method('employees')->with('Maria')->willReturn($lookup->search('Maria'));
         $this->mockService(\App\Integration\Totvs\GatewayInterface::class,fn()=>$gateway);
@@ -657,7 +656,7 @@ class EtapaDoisTest extends TestCase
         $this->assertCount(2,$data['results']);
         $this->assertSame('000123',$data['results'][0]['matricula']);
         $this->assertSame('00001',$data['results'][0]['funcao']);
-        $this->assertTrue($data['results'][0]['ativo']); $this->assertFalse($data['results'][1]['ativo']);
+        $this->assertTrue($data['results'][0]['ativo']); $this->assertTrue($data['results'][1]['ativo']);
         $this->assertSame('FÉRIAS',$data['results'][1]['situacao']);
     }
     public function testPreviousIdentityIsPreservedAndBlocksMixedNewKeys(): void
@@ -882,7 +881,7 @@ class EtapaDoisTest extends TestCase
     }
     private function supply(string $quantity='2,5'): array
     {
-        return ['funcionario_chave'=>'pessoa-1','funcionario_rotulo'=>'Pessoa selecionada','data'=>'26/10/2026','material'=>'Rolamento','quantidade'=>$quantity];
+        return ['funcionario_chave'=>'pessoa-1','funcionario_rotulo'=>'Pessoa selecionada','data'=>'26/10/2026','material'=>'Rolamento','unidade'=>'und','quantidade'=>$quantity];
     }
     public function testSuppliesBatchPreservesEmployeeAndQuantityWithAudit(): void
     {

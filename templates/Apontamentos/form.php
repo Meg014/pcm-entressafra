@@ -8,7 +8,7 @@
 <?= $this->Form->hidden('consultar_totvs',['value'=>'1']) ?>
 <?= $this->element('order_autocomplete',['quickOrder'=>true]) ?>
 <?= $this->element('employee_autocomplete') ?>
-<?php else: ?><div class="d-flex justify-content-between align-items-center gap-2 border-bottom py-2 mb-3"><div><strong><?= h($row->funcionario_nome) ?></strong><small class="d-block text-secondary"><?= h('Matrícula '.$row->funcionario_matricula) ?></small></div><span class="badge bg-success">✓ Identificação preservada</span></div><?php endif; ?>
+<?php else: ?><div class="d-flex justify-content-between align-items-center gap-2 border-bottom py-2 mb-3"><div><strong><?= h($row->funcionario_nome) ?><?= (json_decode((string)$row->snapshot, true)['funcionario']['situacao_codigo'] ?? '') === 'F' ? ' · Férias (TOTVS)' : '' ?></strong><small class="d-block text-secondary"><?= h('Matrícula '.$row->funcionario_matricula) ?></small></div><span class="badge bg-success">✓ Identificação preservada</span></div><?php endif; ?>
 <?php
 $start=$row?->inicio?->setTimezone('America/Sao_Paulo');$end=$row?->fim?->setTimezone('America/Sao_Paulo');
 foreach(['inicio'=>'start','fim'=>'end'] as $old=>$target){$value=$this->request->getData($old);if(is_string($value)){$parsed=\DateTimeImmutable::createFromFormat('!Y-m-d\TH:i',$value,new \DateTimeZone('America/Sao_Paulo'));if($parsed)${$target}=$parsed;}}

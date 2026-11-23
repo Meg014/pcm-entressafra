@@ -9,7 +9,7 @@ $lines=$this->request->getData('insumos');if(!is_array($lines)||!$lines)$lines=[
 <?= $this->element('envio_chave') ?>
 <?= $this->Form->hidden('quantidade_linhas',['id'=>'supplies-count','value'=>count($lines)]) ?>
 <?= $this->element('order_autocomplete',['quickOrder'=>true]) ?>
-<div class="entry-head" aria-hidden="true"><span>Funcionário</span><span>Data</span><span>Material</span><span>Quantidade</span><span>Ações</span></div>
+<div class="entry-head" aria-hidden="true"><span>Funcionário</span><span>Data</span><span>Material</span><span>Quantidade</span><span>Unidade</span><span>Ações</span></div>
 <div id="supplies-lines">
 <?php foreach(array_values($lines) as $index=>$line): ?><?= $this->element('insumo_entry',['index'=>$index,'line'=>is_array($line)?$line:[],'error'=>$errors[$index]??'']) ?><?php endforeach; ?>
 </div>

@@ -53,7 +53,7 @@ class FilaPcmUnificadaTest extends TestCase
     }
     private function supplies(int $index=0,int $count=1): array
     {
-        $rows=array_fill(0,$count,['funcionario_chave'=>'pessoa-1','data'=>'21/10/2026','material'=>'Rolamento da O.S. '.$index,'quantidade'=>'2,5']);
+        $rows=array_fill(0,$count,['funcionario_chave'=>'pessoa-1','data'=>'21/10/2026','material'=>'Rolamento da O.S. '.$index,'unidade'=>'und','quantidade'=>'2,5']);
         return (new Insumos(new FakeTotvs()))->saveBatch($this->admin,['atividade_id'=>$this->activities[$index],'insumos'=>$rows]);
     }
     private function selection(array $ids,string $alias='Insumos'): array

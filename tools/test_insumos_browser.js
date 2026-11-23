@@ -3,6 +3,10 @@
  try{
   const lines=document.getElementById('supplies-lines'),add=document.getElementById('supplies-add');
   check(lines.children.length===1,'Uma linha inicial');
+  const unit=lines.firstElementChild.querySelector('select[name$="[unidade]"]');
+  check(unit.required&&!unit.checkValidity(),'Unidade obrigatória sem seleção automática');
+  check([...unit.options].map(o=>o.value).join(',')===',m,kg,und,PSI','Somente unidades permitidas');
+  unit.value='kg';check(unit.checkValidity(),'Unidade selecionada aceita');
   const first=lines.firstElementChild;first.querySelector('[name$="[material]"]').value='Material preservado';
   const date=first.querySelector('[data-supply-date]');date.value='26102026';date.dispatchEvent(new Event('input'));
   check(date.value==='26/10/2026'&&date.checkValidity(),'Máscara e data válida');
@@ -11,11 +15,17 @@
   const quantity=first.querySelector('[data-supply-quantity]');quantity.value='0';quantity.dispatchEvent(new Event('input'));check(!quantity.checkValidity(),'Zero bloqueado');
   quantity.value='2,5';quantity.dispatchEvent(new Event('input'));check(quantity.checkValidity(),'Quantidade fracionada aceita');
   add.click();add.click();check(lines.children.length===3,'Adiciona várias linhas');
+  check(unit.value==='kg','Preserva unidade ao adicionar');
+  check(lines.children[1].querySelector('select[name$="[unidade]"]').value==='','Nova linha exige unidade própria');
   check(first.querySelector('[name$="[material]"]').value==='Material preservado','Preserva material ao adicionar');
   const second=lines.children[1],lookup=second.querySelector('[data-lookup]'),input=lookup.querySelector('[role=combobox]');
   input.value='teste';input.dispatchEvent(new Event('input'));await new Promise(resolve=>setTimeout(resolve,400));
-  const options=lookup.querySelectorAll('[role=option]');check(options.length===2&&options[1].disabled,'Funcionário não NORMAL bloqueado');options[0].click();
-  check(lookup.querySelector('[id$=funcionario-chave]').value==='0001','Seleciona funcionário confirmado');
+  const options=lookup.querySelectorAll('[role=option]');check(options.length===3&&options[1].disabled,'Matrícula duplicada bloqueada');options[0].click();
+  check(input.value==='Funcionario de teste','Seleciona funcionário normal');
+  input.value='0003';input.dispatchEvent(new Event('input'));await new Promise(resolve=>setTimeout(resolve,400));
+  lookup.querySelectorAll('[role=option]')[2].click();
+  check(input.value.includes('Férias (TOTVS)'),'Identifica funcionário em férias');
+  check(lookup.querySelector('[id$=funcionario-chave]').value==='0003','Seleciona funcionário confirmado');
   check(first.querySelector('[id$=funcionario-chave]').value==='','Funcionários independentes por linha');
   lines.lastElementChild.querySelector('.supplies-remove').click();check(lines.children.length===2,'Remove linha');
   check(first.querySelector('[name$="[material]"]').value==='Material preservado','Remover preserva campos');

@@ -6,21 +6,23 @@ use App\Integration\Totvs\Employees;
 use App\Integration\Totvs\Queries;
 use Cake\Datasource\ConnectionManager;
 try {
-    $sample=ConnectionManager::get('protheus')->execute(Queries::EMPLOYEE_UNIQUE_SAMPLE)->fetch('assoc');
-    if(!$sample) { throw new RuntimeException(); }
-    $service=new Employees();
-    foreach(['nome'=>rtrim($sample['RA_NOME']),'matricula'=>rtrim($sample['RA_MAT'])] as $kind=>$term) {
-        $results=$service->search($term);
-        if(!$results) { throw new RuntimeException(); }
-        foreach($results as $person) {
-            if (!in_array($person['situacao_codigo'],['','F'],true) || ($person['situacao_codigo']==='F' && ($person['ativo'] || $person['chave']!==''))) { throw new RuntimeException(); }
+    $service = new Employees();
+    foreach ([''=>'NORMAL', 'F'=>'Férias'] as $status=>$label) {
+        $sample = ConnectionManager::get('protheus')->execute(Queries::EMPLOYEE_UNIQUE_SAMPLE, ['situacao'=>$status])->fetch('assoc');
+        if (!$sample) {
+            echo $label, ' sem amostra de matrícula única disponível.', PHP_EOL;
+            continue;
         }
-        echo 'Autocomplete real por ',$kind,': OK; resultados limitados, sem dados pessoais no relatório.',PHP_EOL;
+        $number = rtrim($sample['RA_MAT']);
+        foreach ([rtrim($sample['RA_NOME']), $number] as $term) {
+            $results = $service->search($term);
+            if (!in_array($number, array_column($results, 'chave'), true)) throw new RuntimeException();
+        }
+        $unique = $service->find($number);
+        if (!$unique['ativo'] || $unique['chave'] !== $number || $unique['situacao_codigo'] !== $status) throw new RuntimeException();
+        echo $label, ' com matrícula única: pesquisa por nome e matrícula e confirmação OK.', PHP_EOL;
     }
     $groups=$service->duplicateGroups();
-    $unique=$service->find(rtrim($sample['RA_MAT']));
-    if(!$unique['ativo'] || $unique['chave']!==rtrim($sample['RA_MAT'])) { throw new RuntimeException(); }
-    echo 'Funcionário NORMAL único confirmado apesar de duplicidades em outras matrículas: OK.',PHP_EOL;
     foreach($groups as $group) {
         $number=rtrim((string)$group['matricula']); if($number==='') { continue; }
         try { $service->find($number); throw new RuntimeException(); }

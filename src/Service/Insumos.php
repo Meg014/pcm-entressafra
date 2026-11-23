@@ -7,6 +7,30 @@ final class Insumos
 {
     public function __construct(private GatewayInterface $gateway) {}
 
+    public const UNITS = ['m'=>'m — Metro', 'kg'=>'kg — Quilograma', 'und'=>'und — Unidade', 'PSI'=>'PSI — Libra por polegada quadrada'];
+
+    public static function auditUnits(?string $json): ?string
+    {
+        $data = json_decode($json ?? '', true);
+        if (!is_array($data)) return $json;
+        $data['unidade'] = ($data['unidade'] ?? '') ?: 'Não informada';
+        return json_encode($data, JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE);
+    }
+
+    public static function unit(mixed $value): string
+    {
+        if (!is_string($value) || !array_key_exists($value, self::UNITS)) throw new \DomainException('Selecione uma unidade válida: m, kg, und ou PSI.');
+        return $value;
+    }
+
+    public static function quantity(string $value): string
+    {
+        $value = str_replace(',', '.', trim($value));
+        if (!preg_match('/^\d{1,14}(?:\.\d{1,4})?$/D', $value) || !preg_match('/[1-9]/', $value)) throw new \DomainException('Quantidade deve ser maior que zero, com até 4 casas decimais.');
+        [$integer, $decimal] = array_pad(explode('.', $value, 2), 2, '');
+        return (ltrim($integer, '0') ?: '0').'.'.str_pad($decimal, 4, '0');
+    }
+
     public function saveBatch(int $actor,array $input): array
     {
         if(isset($input['envio_chave']))return EnvioLote::run($actor,'insumos',$input,function()use($actor,$input){unset($input['envio_chave']);return $this->saveBatch($actor,$input);});
@@ -29,12 +53,12 @@ final class Insumos
                 $date=\DateTimeImmutable::createFromFormat('!d/m/Y',$row['data']);
                 if(!$date||$date->format('d/m/Y')!==$row['data']||!checkdate((int)$date->format('m'),(int)$date->format('d'),(int)$date->format('Y')))throw new \DomainException('Informe uma data válida (DD/MM/AAAA).');
                 $material=trim($row['material']);if(mb_strlen($material)>500)throw new \DomainException('Material: máximo de 500 caracteres.');
-                $quantity=str_replace(',','.',trim($row['quantidade']));
-                if(!preg_match('/^\d{1,14}(?:\.\d{1,4})?$/D',$quantity)||!preg_match('/[1-9]/',$quantity))throw new \DomainException('Quantidade deve ser maior que zero, com até 4 casas decimais.');
+                $quantity=self::quantity($row['quantidade']);
+                $unit=self::unit($row['unidade']??null);
                 $person=$this->gateway->employee($row['funcionario_chave']);
                 foreach(['chave','nome','matricula','filial','vinculo'] as $field){if(!isset($person[$field])||!is_string($person[$field])||($field!=='filial'&&trim($person[$field])==='')||strlen($person[$field])>($field==='matricula'||$field==='filial'?100:255))throw new \DomainException('Identificação do funcionário incompleta ou ambígua.');}
-                if(($person['ativo']??false)!==true||$person['chave']!==$row['funcionario_chave'])throw new \DomainException('Selecione um funcionário NORMAL e com matrícula válida.');
-                $prepared[]=['atividade_id'=>$activity->id,'funcionario_chave'=>$person['chave'],'funcionario_nome'=>$person['nome'],'funcionario_matricula'=>$person['matricula'],'data'=>$date->format('Y-m-d'),'material'=>$material,'quantidade'=>$quantity,'snapshot'=>json_encode(['funcionario'=>$person,'os_numero'=>$activity->os_numero,'os_filial'=>$activity->os_filial,'entressafra_id'=>$activity->entressafra_id,'setor_executante_id'=>$activity->setor_executante_id],JSON_THROW_ON_ERROR),'criado_por'=>$user->id,'created'=>gmdate('Y-m-d H:i:s')];
+                if(($person['ativo']??false)!==true||$person['chave']!==$row['funcionario_chave'])throw new \DomainException('Selecione um funcionário apto e com matrícula válida.');
+                $prepared[]=['atividade_id'=>$activity->id,'funcionario_chave'=>$person['chave'],'funcionario_nome'=>$person['nome'],'funcionario_matricula'=>$person['matricula'],'data'=>$date->format('Y-m-d'),'material'=>$material,'quantidade'=>$quantity,'unidade'=>$unit,'snapshot'=>json_encode(['funcionario'=>$person,'os_numero'=>$activity->os_numero,'os_filial'=>$activity->os_filial,'entressafra_id'=>$activity->entressafra_id,'setor_executante_id'=>$activity->setor_executante_id],JSON_THROW_ON_ERROR),'criado_por'=>$user->id,'created'=>gmdate('Y-m-d H:i:s')];
             }catch(\DomainException $e){$errors[$index]=$e->getMessage();}
         }
         if($errors)throw new BatchEntryException($errors);

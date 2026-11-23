@@ -31,7 +31,7 @@ final class Employees
         $number = rtrim((string)$row['RA_MAT'], ' ');
         $name = rtrim((string)$row['RA_NOME'], ' '); $status = trim((string)$row['RA_SITFOLH']);
         if (trim($name) === '') { throw new \DomainException('Funcionário sem nome no cadastro.'); }
-        $eligible=$unique && $status==='' && $number!=='';
+        $eligible=$unique && in_array($status, ['', 'F'], true) && $number!=='';
         return ['chave'=>$eligible ? self::key($number) : '', 'nome'=>$name, 'matricula'=>$number, 'filial'=>'', 'filial_consultada'=>false, 'vinculo'=>$number, 'identificacao'=>'matricula_010', 'funcao'=>rtrim((string)$row['RA_CODFUNC'], ' '), 'situacao_codigo'=>$status, 'situacao'=>match($status) { ''=>'NORMAL', 'F'=>'FÉRIAS', default=>'Situação cadastral: ' . $status }, 'ativo'=>$eligible, 'bloqueio'=>$unique ? null : self::AMBIGUOUS, 'empresa'=>'010', 'origem_nome'=>'RA_NOME'];
     }
     public function search(string $term): array
@@ -55,7 +55,7 @@ final class Employees
         self::key($key);
         $rows = $this->read(Queries::EMPLOYEE_DETAIL, ['matricula'=>$key]);
         if (count($rows)>1) { throw new \DomainException(self::AMBIGUOUS); }
-        if (count($rows)!==1) { throw new \DomainException('Funcionário inexistente ou não está em situação NORMAL. Selecione novamente.'); }
+        if (count($rows)!==1) { throw new \DomainException('Funcionário inexistente ou está fora das situações permitidas. Selecione novamente.'); }
         $person = $this->map($rows[0],true);
         if ($person['chave'] !== $key) { throw new \DomainException('Vínculo do funcionário não confirmado.'); }
         return $person;

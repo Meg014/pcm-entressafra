@@ -7,7 +7,7 @@ $html=[IO.File]::ReadAllText($preview)
 $webroot=([uri](Join-Path $project 'webroot/')).AbsoluteUri
 $html=$html.Replace('src="/js/', 'src="'+$webroot+'js/').Replace('href="/css/', 'href="'+$webroot+'css/').Replace('src="/img/', 'src="'+$webroot+'img/')
 $mock=@"
-<script>window.errors=[];window.addEventListener('error',e=>window.errors.push(e.message));window.fetch=async()=>({ok:true,redirected:false,json:async()=>({results:[{chave:'0001',nome:'Funcionario de teste',matricula:'0001',situacao:'NORMAL',ativo:true},{chave:'0002',nome:'Bloqueado',matricula:'0002',situacao:'FERIAS',ativo:false}]})});</script>
+<script>window.errors=[];window.addEventListener('error',e=>window.errors.push(e.message));window.fetch=async()=>({ok:true,redirected:false,json:async()=>({results:[{chave:'0001',nome:'Funcionario de teste',matricula:'0001',situacao:'NORMAL',ativo:true},{chave:'',nome:'Duplicado',matricula:'0002',situacao:'NORMAL',ativo:false,bloqueio:'Duplicidade'},{chave:'0003',nome:'Pessoa de teste',matricula:'0003',situacao_codigo:'F',situacao:'FERIAS',ativo:true}]})});</script>
 "@
 $html=$html.Replace('</head>',$mock+'</head>')
 $test=[IO.File]::ReadAllText((Join-Path $PSScriptRoot $TestScript))

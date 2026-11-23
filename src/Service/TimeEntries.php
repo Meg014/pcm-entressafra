@@ -138,7 +138,7 @@ final class TimeEntries
                     foreach (['chave', 'nome', 'matricula', 'filial', 'vinculo'] as $field) {
                         if (!isset($employee[$field]) || !is_string($employee[$field]) || ($field !== 'filial' && trim($employee[$field]) === '') || strlen($employee[$field]) > ($field === 'matricula' || $field === 'filial' ? 100 : 255)) { throw new \DomainException('Identificação do funcionário incompleta ou ambígua.'); }
                     }
-                    if ($employee['chave'] !== ($input['funcionario_chave'] ?? null) || ($employee['ativo'] ?? false) !== true) { throw new \DomainException('Funcionário não apto para novo apontamento. Férias, afastamentos e outras situações exigem regra ou autorização definida pelo PCM.'); }
+                    if ($employee['chave'] !== ($input['funcionario_chave'] ?? null) || ($employee['ativo'] ?? false) !== true) { throw new \DomainException('Funcionário não apto para novo apontamento.'); }
                     if (($employee['identificacao']??'')==='matricula_010' && $table->find()->where(['cancelado'=>false,'funcionario_chave <> funcionario_matricula'])->count()>0) { throw new \DomainException('Há apontamentos ativos com a identificação anterior. Solicite análise do histórico antes de habilitar novas matrículas; nenhum registro foi alterado.'); }
                     $sector = $activity->setor_executante_id?Access::table('Setores')->get($activity->setor_executante_id):null;
                     $season = Access::table('Entressafras')->get($activity->entressafra_id);

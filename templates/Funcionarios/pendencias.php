@@ -1,8 +1,8 @@
 <?php $this->assign('title','Pendências de identificação'); ?>
 <h1>Pendências de identificação de funcionários</h1>
-<p class="text-secondary">Somente matrículas NORMAL duplicadas ou vazias na família 010. Os demais funcionários não são bloqueados por estas pendências.</p>
+<p class="text-secondary">Somente matrículas duplicadas ou vazias entre funcionários em situação normal ou de férias na família 010. Os demais funcionários não são bloqueados por estas pendências.</p>
 <section class="panel mt-4">
-<div class="table-responsive"><table class="table"><thead><tr><th>Matrícula</th><th>Registros NORMAL</th><th>Pendência</th></tr></thead><tbody>
+<div class="table-responsive"><table class="table"><thead><tr><th>Matrícula</th><th>Registros normais ou em férias</th><th>Pendência</th></tr></thead><tbody>
 <?php foreach($groups as $group): ?><tr><td><?= h($group['matricula'] ?: '(vazia)') ?></td><td><?= h($group['quantidade']) ?></td><td><?= h(trim((string)$group['matricula'])===''?'Matrícula ausente. Solicite a conferência do PCM.':\App\Integration\Totvs\Employees::AMBIGUOUS) ?></td></tr><?php endforeach; ?>
 <?php if(!$groups): ?><tr><td colspan="3"><?= $unavailable?'Consulta indisponível. Tente novamente.':'Nenhuma pendência encontrada.' ?></td></tr><?php endif; ?>
 </tbody></table></div>

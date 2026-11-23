@@ -17,7 +17,7 @@ class EmployeesTest extends TestCase
     private function lookup(\Closure $reader): Employees
     { return new Employees(fn($sql,$params)=>$sql===Queries::EMPLOYEE_DUPLICATES?[]:$reader($sql,$params)); }
     private function row(string $status = ''): array
-    { return ['RA_NOME'=>'Nome de teste  ','RA_MAT'=>'000123','RA_CODFUNC'=>'00123','RA_SITFOLH'=>$status,'elegiveis'=>$status===''?1:0]; }
+    { return ['RA_NOME'=>'Nome de teste  ','RA_MAT'=>'000123','RA_CODFUNC'=>'00123','RA_SITFOLH'=>$status,'elegiveis'=>in_array(trim($status), ['', 'F'], true)?1:0]; }
     public function testSearchByPartialNameOrNumberPreservesIdentity(): void
     {
         foreach (['Nome','001'] as $term) {
@@ -48,9 +48,9 @@ class EmployeesTest extends TestCase
         $this->assertNotSame($people[0]['chave'],$people[1]['chave']);
         $this->assertNotSame(Employees::key('000123'),Employees::key('000124'));
     }
-    public static function statuses(): array { return [['',true,'NORMAL'],['F',false,'FÉRIAS'],['D',false,'Situação cadastral: D'],['A',false,'Situação cadastral: A'],['X',false,'Situação cadastral: X']]; }
+    public static function statuses(): array { return [['',true,'NORMAL'],['F',true,'FÉRIAS'],['D',false,'Situação cadastral: D'],['A',false,'Situação cadastral: A'],['X',false,'Situação cadastral: X']]; }
     #[DataProvider('statuses')]
-    public function testOnlyNormalIsEligible(string $status,bool $eligible,string $label): void
+    public function testNormalAndVacationAreEligible(string $status,bool $eligible,string $label): void
     {
         $people=($this->lookup(fn()=>[$this->row($status)]))->search('Nome');
         if (!in_array($status,['','F'],true)) { $this->assertSame([],$people); return; }
@@ -60,7 +60,8 @@ class EmployeesTest extends TestCase
     public function testSqlFiltersSituationsBeforeLimitForBothNameAndNumber(): void
     {
         $this->assertStringContainsString("WHERE LTRIM(RTRIM(s.RA_SITFOLH)) IN ('', 'F') AND (UPPER(s.RA_NOME) LIKE UPPER(:nome) OR UPPER(s.RA_MAT) LIKE UPPER(:matricula))",Queries::EMPLOYEE_SEARCH);
-        $this->assertStringContainsString("LTRIM(RTRIM(RA_SITFOLH)) = ''",Queries::EMPLOYEE_DETAIL);
+        $this->assertStringContainsString("LTRIM(RTRIM(e.RA_SITFOLH)) IN ('', 'F')",Queries::EMPLOYEE_SEARCH);
+        $this->assertStringContainsString("LTRIM(RTRIM(RA_SITFOLH)) IN ('', 'F')",Queries::EMPLOYEE_DETAIL);
     }
     public function testBackendFiltersUnapprovedSituationsBeforeApplyingLimit(): void
     {
@@ -72,7 +73,7 @@ class EmployeesTest extends TestCase
             $people=($this->lookup(fn()=>$rows))->search($term);
             $this->assertCount(2,$people);
             $this->assertSame(['NORMAL','FÉRIAS'],array_column($people,'situacao'));
-            $this->assertTrue($people[0]['ativo']); $this->assertFalse($people[1]['ativo']);
+            $this->assertTrue($people[0]['ativo']); $this->assertTrue($people[1]['ativo']);
         }
     }
     #[DataProvider('statuses')]
@@ -106,7 +107,7 @@ class EmployeesTest extends TestCase
     public function testMissingOrAmbiguousDetailIsRejected(): void
     {
         $key=Employees::key('000123');
-        foreach([[],[$this->row(),$this->row()]] as $rows) {
+        foreach([[],[$this->row(),$this->row('F')]] as $rows) {
             try { ($this->lookup(fn()=>$rows))->find($key); $this->fail('Identidade não confirmada aceita.'); } catch(\DomainException) { $this->assertTrue(true); }
         }
     }
@@ -118,7 +119,7 @@ class EmployeesTest extends TestCase
     public function testDuplicateEligibleNumbersBlockSelectionAndSaving(): void
     {
         $duplicate=$this->row(); $duplicate['elegiveis']=2;
-        $lookup=new Employees(fn($sql)=>$sql===Queries::EMPLOYEE_SEARCH ? [$duplicate] : [$this->row(),$this->row()]);
+        $lookup=new Employees(fn($sql)=>$sql===Queries::EMPLOYEE_SEARCH ? [$duplicate] : [$this->row(),$this->row('F')]);
         $person=$lookup->search('Nome')[0];
         $this->assertSame('NORMAL',$person['situacao']); $this->assertFalse($person['ativo']);
         $this->assertSame('',$person['chave']); $this->assertSame(Employees::AMBIGUOUS,$person['bloqueio']);
@@ -127,7 +128,7 @@ class EmployeesTest extends TestCase
     }
     public function testUniquenessIsCheckedAgainAfterSelection(): void
     {
-        $lookup=new Employees(fn($sql)=>$sql===Queries::EMPLOYEE_SEARCH ? [$this->row()] : [$this->row(),$this->row()]);
+        $lookup=new Employees(fn($sql)=>$sql===Queries::EMPLOYEE_SEARCH ? [$this->row()] : [$this->row(),$this->row('F')]);
         $person=$lookup->search('Nome')[0]; $this->assertTrue($person['ativo']);
         $this->expectException(\DomainException::class); $lookup->find($person['chave']);
     }
@@ -151,7 +152,7 @@ class EmployeesTest extends TestCase
         $this->assertTrue($people[0]['ativo']); $this->assertNull($people[0]['bloqueio']);
         $this->assertFalse($people[1]['ativo']); $this->assertFalse($people[2]['ativo']);
         $this->assertSame(Employees::AMBIGUOUS,$people[1]['bloqueio']);
-        $this->assertSame('',$people[1]['chave']); $this->assertFalse($people[3]['ativo']);
+        $this->assertSame('',$people[1]['chave']); $this->assertTrue($people[3]['ativo']);
         $this->assertSame('000123',$lookup->find('000123')['chave']);
     }
 }

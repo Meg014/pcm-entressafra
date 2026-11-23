@@ -37,13 +37,28 @@ class CorretivasTest extends TestCase
 
     protected function tearDown(): void {PeriodoContexto::set(null);parent::tearDown();}
     private function identify(): int {return (new Activities($this->gateway))->identify($this->admin,$this->source['chave']);}
+    public function testSupplyUnitCorrectionPreservesUnplannedCorrectiveOrder(): void
+    {
+        $activity=$this->identify();$id=$this->supplies($activity)[0];
+        $before=Access::table('Atividades')->get($activity)->toArray();
+        $row=Access::table('Insumos')->get($id);
+        (new \App\Service\InsumosEdicao())->edit($this->admin,$id,[
+            'material'=>$row->material,'quantidade'=>(string)$row->quantidade,
+            'unidade'=>'kg','motivo'=>'Conferência da unidade','revisao_pcm'=>'0',
+        ]);
+        $this->assertSame('kg',Access::table('Insumos')->get($id)->unidade);
+        $this->assertEquals($before,Access::table('Atividades')->get($activity)->toArray());
+        $this->assertNull(Access::table('Atividades')->get($activity)->caderno_id);
+        $queue=(new FilaPcm())->queue(Access::actor($this->admin));
+        $this->assertSame(1,(int)$queue[0]['insumos_pendentes']);
+    }
     private function hours(int $id): int
     {
         return (new TimeEntries($this->gateway))->save($this->admin,['atividade_id'=>$id,'funcionario_chave'=>'pessoa-1','inicio'=>'2026-10-21T07:00','fim'=>'2026-10-21T09:00','descricao'=>'Serviço corretivo']);
     }
     private function supplies(int $id): array
     {
-        return (new Insumos($this->gateway))->saveBatch($this->admin,['atividade_id'=>$id,'insumos'=>[['funcionario_chave'=>'pessoa-1','data'=>'21/10/2026','material'=>'Rolamento','quantidade'=>'2,5']]]);
+        return (new Insumos($this->gateway))->saveBatch($this->admin,['atividade_id'=>$id,'insumos'=>[['funcionario_chave'=>'pessoa-1','data'=>'21/10/2026','material'=>'Rolamento','unidade'=>'und','quantidade'=>'2,5']]]);
     }
 
     public function testRecognitionUsesOfficialNameOrExactCodeOnly(): void

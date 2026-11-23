@@ -6,6 +6,7 @@
 <div><?= $this->Form->control($prefix.'data',['label'=>'Data','type'=>'text','value'=>$value('data'),'placeholder'=>'DD/MM/AAAA','inputmode'=>'numeric','maxlength'=>10,'required'=>true,'class'=>'form-control','data-supply-date'=>true]) ?></div>
 <div><?= $this->Form->control($prefix.'material',['label'=>'Material','type'=>'text','value'=>$value('material'),'maxlength'=>500,'required'=>true,'class'=>'form-control']) ?></div>
 <div><?= $this->Form->control($prefix.'quantidade',['label'=>'Quantidade','type'=>'text','value'=>$value('quantidade'),'inputmode'=>'decimal','maxlength'=>19,'required'=>true,'class'=>'form-control','data-supply-quantity'=>true]) ?></div>
+<div><?= $this->Form->control($prefix.'unidade',['label'=>'Unidade','type'=>'select','options'=>\App\Service\Insumos::UNITS,'empty'=>'Selecione','value'=>$value('unidade'),'required'=>true,'class'=>'form-select']) ?></div>
 <div><button type="button" class="entry-icon supplies-remove" aria-label="Remover insumo" title="Remover linha">−</button></div>
 </div>
 <div class="entry-error text-danger" role="alert"><?= h($error) ?></div>

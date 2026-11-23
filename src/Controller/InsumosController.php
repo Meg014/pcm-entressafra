@@ -23,8 +23,25 @@ class InsumosController extends OperacaoController
     }
     public function index(): void
     {
-        $query=Access::activityScope($this->fetchTable('Insumos')->find()->contain(['Atividades'=>['Entressafras','SetorExecutante','Cadernos']])->innerJoinWith('Atividades'),$this->currentUser);
-        if(Access::operational($this->currentUser))$query->where(['Insumos.criado_por'=>$this->currentUser->id]);
-        $this->set('rows',$this->paginate($query->orderBy(['Insumos.id'=>'DESC']),['limit'=>50,'maxLimit'=>50]));
+        $filters=\App\Service\InsumosConsulta::filters($this->request->getQueryParams());
+        $query=\App\Service\InsumosConsulta::query($this->currentUser,$filters);
+        $this->set('rows',$this->paginate($query,['limit'=>50,'maxLimit'=>50,'sortableFields'=>[]]));
+        $this->set(compact('filters'));
+    }
+
+    public function edit($id)
+    {
+        $this->request->allowMethod(['post']);
+        Access::admin($this->currentUser);
+        try {
+            (new \App\Service\InsumosEdicao())->edit((int)$this->currentUser->id,(int)$id,$this->request->getData());
+            $this->Flash->success('Insumo atualizado. Histórico preservado.');
+        } catch (\DomainException $e) {
+            $this->Flash->error($e->getMessage());
+        }
+        $filters=\App\Service\InsumosConsulta::filters($this->request->getQueryParams());
+        $page=$this->request->getQuery('page','1');
+        if(is_string($page)&&ctype_digit($page))$filters['page']=$page;
+        return $this->redirect(['action'=>'index','?'=>$filters]);
     }
 }

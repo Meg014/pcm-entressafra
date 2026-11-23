@@ -13,6 +13,7 @@ return function (RouteBuilder $routes): void {
         $builder->connect('/servicos-sugeridos/toggle/{id}',['controller'=>'ServicosSugeridos','action'=>'toggle'])->setPatterns(['id'=>'[1-9][0-9]*'])->setPass(['id'])->setMethods(['POST']);
         $builder->connect('/insumos',['controller'=>'Insumos','action'=>'index'])->setMethods(['GET']);
         $builder->connect('/insumos/add',['controller'=>'Insumos','action'=>'add'])->setMethods(['GET','POST']);
+        $builder->connect('/insumos/edit/{id}',['controller'=>'Insumos','action'=>'edit'])->setPatterns(['id'=>'[1-9][0-9]*'])->setPass(['id'])->setMethods(['POST']);
         $builder->connect('/os-sem-caderno',['controller'=>'OsSemCaderno','action'=>'index'])->setMethods(['GET','POST']);
         $builder->connect('/escolher-entressafra',['controller'=>'Periodos','action'=>'index'])->setMethods(['GET']);
         $builder->connect('/escolher-entressafra/entrar',['controller'=>'Periodos','action'=>'selecionar'])->setMethods(['POST']);

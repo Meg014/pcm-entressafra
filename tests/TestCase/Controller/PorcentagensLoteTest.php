@@ -24,6 +24,39 @@ class PorcentagensLoteTest extends TestCase
     protected function tearDown(): void {PeriodoContexto::set(null);parent::tearDown();}
     private function login(int $id): void {$u=Access::actor($id);$this->session(['Auth'=>['id'=>$id,'stamp'=>hash('sha256',$u->senha_hash),'last'=>time()],'Periodo'=>['id'=>$this->season,'usuario_id'=>$id]]);}
     private function row(int $index,float $value,float $base=0,int $revision=0): array {return ['atividade_id'=>$this->ids[$index],'percentual'=>$value,'base'=>$base,'revisao'=>$revision,'referencia'=>$this->reference];}
+    public function testEquipmentNamesMatchGridAndExcelWithoutChangingCodes(): void
+    {
+        $table=Access::table('Atividades');
+        $codes=['BCE 40 064','EXA 50 001','TOR 40 017'];
+        $expected=['BB CARREGAMENTO DE ALCOOL','EXAUSTOR EX-23 101','TORRE DE RESFRIAMENTO DESTILARIA 02'];
+        foreach($codes as $i=>$code){
+            $a=$table->get($this->ids[$i]);$a->bem=$code;
+            $a->snapshot_totvs=$i===2?json_encode(['bem'=>$code,'filial'=>'01','bem_nome'=>$expected[$i]]):'{}';
+            $table->saveOrFail($a);
+        }
+        $equipment=new \App\Service\EquipmentNames(new \App\Integration\Totvs\Equipment(function($sql,$params)use($codes,$expected){
+            $this->assertSame('01',$params['filial']);
+            $this->assertNotContains($codes[2],array_values($params));
+            return [
+                ['codigo'=>$codes[0],'filial'=>'01','nome'=>$expected[0]],
+                ['codigo'=>$codes[1],'filial'=>'01','nome'=>$expected[1]],
+                ['codigo'=>$codes[0],'filial'=>'02','nome'=>'Outra filial'],
+            ];
+        }));
+        $user=Access::actor($this->admin);$now=new \DateTimeImmutable('2026-10-28');
+        $grid=(new \App\Service\EvolucaoSemanal($now,null,$equipment))->page($user,$this->season,$this->areas[0],'',1);
+        $book=(new \App\Service\ExportarPorcentagens(null,$equipment))->workbook($user,$this->season,$this->areas[0],$now);
+        try{
+            foreach($codes as $i=>$code){
+                $this->assertSame($expected[$i],$grid['rows'][$i]['equipamento']);
+                $this->assertSame($grid['rows'][$i]['equipamento'],$book->getActiveSheet()->getCell('C'.($i+6))->getValue());
+                $this->assertSame($code,$table->get($this->ids[$i])->bem);
+            }
+            $this->assertSame($grid['rows'][3]['bem'],$grid['rows'][3]['equipamento']);
+            $this->assertSame($grid['rows'][3]['bem'],$book->getActiveSheet()->getCell('C9')->getValue());
+        }finally{$book->disconnectWorksheets();}
+    }
+
     public function testRealChecklistDescriptionsInReopenedExcel(): void
     {
         // Exact descriptions read from TOTVS on 2026-11-17, including the full checklist.

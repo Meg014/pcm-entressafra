@@ -35,8 +35,12 @@ check(first.querySelector('textarea').value==='Preservar serviço','Preserva dad
 const roots=[...lines.querySelectorAll('[data-lookup]')];
 const input=roots[1].querySelector('[role=combobox]');input.value='teste';input.dispatchEvent(new Event('input'));
 await new Promise(r=>setTimeout(r,400));
-const options=roots[1].querySelectorAll('[role=option]');check(options.length===2&&options[1].disabled,'Autocomplete bloqueia funcionário não NORMAL');options[0].click();
-check(roots[1].querySelector('[id$=funcionario-chave]').value==='0001','Seleciona funcionário na própria linha');
+const options=roots[1].querySelectorAll('[role=option]');check(options.length===3&&options[1].disabled,'Matrícula duplicada bloqueada');options[0].click();
+check(input.value==='Funcionario de teste','Seleciona funcionário normal');
+input.value='0003';input.dispatchEvent(new Event('input'));await new Promise(resolve=>setTimeout(resolve,400));
+roots[1].querySelectorAll('[role=option]')[2].click();
+check(input.value.includes('Férias (TOTVS)'),'Identifica funcionário em férias');
+check(roots[1].querySelector('[id$=funcionario-chave]').value==='0003','Seleciona funcionário na própria linha');
 check(roots[0].querySelector('[id$=funcionario-chave]').value==='','Identidades independentes');
 lines.children[1].querySelector('.remove-entry').click();check(lines.children.length===2,'Remove linha');
 check(lines.children[1].querySelector('.entry-number span').textContent==='2','Renumera linhas');
