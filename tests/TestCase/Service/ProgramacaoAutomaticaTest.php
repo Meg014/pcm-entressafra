@@ -62,13 +62,18 @@ class ProgramacaoAutomaticaTest extends TestCase
     public static function weeklyMeasurements(): array
     {
         return [
-            'aceleração' => [[10, 11, 13, 16, 20], 23.],
-            'desaceleração gradual' => [[10, 14, 17, 19, 20], 22.],
+            'aceleração' => [[10, 11, 13, 16, 20], 22.65],
+            'desaceleração gradual' => [[10, 14, 17, 19, 20], 22.35],
             'sem avanço' => [[10, 10, 10, 10, 10], 10.],
             'queda no histórico' => [[20, 18, 15, 13, 10], 10.],
             'poucos dados' => [[9, 10], null],
             'conclusão' => [[100], 100.],
-            'avanço recente de 0,43' => [[7.69, 7.89, 8.29, 9.09, 9.52], 10.032],
+            'avanço recente de 0,43' => [[7.69, 7.89, 8.29, 9.09, 9.52], 9.99385],
+            'Caldeiraria conforme percentuais exibidos' => [[3, 6, 8, 9, 9, 10], 11.28],
+            'Caldeiraria mantém precisão decimal' => [[3.2, 5.7, 7.8, 8.8, 9.09, 9.52], 10.665],
+            'ritmo moderado' => [[10, 10.5, 11, 11.5, 12], 12.5],
+            'ritmo acelerado' => [[10, 12, 15, 20, 27], 31.505],
+            'uma semana lenta em histórico longo' => [[10, 12, 14, 16, 18, 20, 20.1], 21.71547619047619],
         ];
     }
 
@@ -95,9 +100,26 @@ class ProgramacaoAutomaticaTest extends TestCase
     public function testRecentAccelerationReceivesMoreWeightAndForecastStopsAtCompletion(): void
     {
         $points=[];foreach([['2026-09-29',10],['2026-10-06',20],['2026-10-13',40],['2026-10-20',70],['2026-10-27',null],['2026-11-03',null]] as [$reference,$value])$points[]=['referencia'=>$reference,'realizado'=>$value,'tendencia'=>null];
-        $trend=CurvaSemanal::trend($points);$this->assertEqualsWithDelta(93.333333,$trend[4]['tendencia'],0.00001);$this->assertSame(100.,$trend[5]['tendencia']);$this->assertNull($trend[4]['realizado']);
+        $trend=CurvaSemanal::trend($points);$this->assertSame(91.,$trend[4]['tendencia']);$this->assertSame(100.,$trend[5]['tendencia']);$this->assertNull($trend[4]['realizado']);
         $this->assertSame(array_slice($points,0,2),CurvaSemanal::trend(array_slice($points,0,2)));
         $falling=$points;foreach([60,50,30,10] as $i=>$value)$falling[$i]['realizado']=$value;
         $this->assertSame(10.,CurvaSemanal::trend($falling)[4]['tendencia']);
+    }
+
+    public function testCompletionDateUsesTheEstimatedSpeedAfterFourIntervals(): void
+    {
+        $points = [];
+        $date = new \DateTimeImmutable('2026-10-26');
+        foreach ([20, 22, 25, 29, 34, null] as $value) {
+            $points[] = ['referencia'=>$date->format('Y-m-d'), 'realizado'=>$value, 'tendencia'=>null];
+            $date = $date->modify('+7 days');
+        }
+
+        $forecast = CurvaSemanal::forecast($points);
+
+        $this->assertSame(34., $forecast['points'][4]['tendencia']);
+        $this->assertSame(37.65, $forecast['points'][5]['tendencia']);
+        $this->assertSame('2027-03-30', $forecast['conclusao_estimada']);
+        $this->assertSame(array_column($points, 'realizado'), array_column($forecast['points'], 'realizado'));
     }
 }

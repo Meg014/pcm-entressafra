@@ -91,7 +91,7 @@ class CalendariosOrdensTest extends TestCase
         Access::table('EvolucaoSemanas')->deleteAll([]);
         $t=Access::table('AreasFabrica');$area=$t->saveOrFail(Access::entity($t,['nome'=>'MOENDA','entressafra_id'=>$this->season]));
         $book=Access::table('Atividades')->get($this->activities[0])->caderno_id;Access::table('Cadernos')->updateAll(['area_curva_id'=>$area->id],['id'=>$book]);
-        $this->auth($this->computer);$this->enableCsrfToken();$reference=(new OperacaoRapida())->reference($this->season)[0];
+        $this->auth($this->computer);$this->enableCsrfToken('PCM_ENTRESSAFRA_CSRF');$reference=(new OperacaoRapida())->reference($this->season)[0];
         $this->post('/lancar-porcentagem?area_id='.$area->id,['chave'=>bin2hex(random_bytes(16)),'alteracoes_json'=>json_encode([['atividade_id'=>$this->activities[0],'percentual'=>25,'base'=>0,'revisao'=>0,'referencia'=>$reference]])]);
         $this->assertRedirect();$this->assertSame(25.0,(new Evolucao())->state($this->activities[0],$reference)['percentual']);$this->assertSame(1,Access::table('EvolucaoSemanas')->find()->count());
     }
@@ -157,7 +157,7 @@ class CalendariosOrdensTest extends TestCase
     }
     public function testIdentifyEndpointRequiresCsrfAndReusesSameLocalOrder(): void {
         $this->auth($this->computer);$this->post('/operacao/identificar',['os_chave'=>'nova-os']);$this->assertResponseCode(403);
-        $this->enableCsrfToken();$this->post('/operacao/identificar',['os_chave'=>'nova-os','tipo'=>'evolucao']);$this->assertResponseOk();$data=json_decode((string)$this->_response->getBody(),true);$id=$data['order']['id'];
+        $this->enableCsrfToken('PCM_ENTRESSAFRA_CSRF');$this->post('/operacao/identificar',['os_chave'=>'nova-os','tipo'=>'evolucao']);$this->assertResponseOk();$data=json_decode((string)$this->_response->getBody(),true);$id=$data['order']['id'];
         $this->assertNull(Access::table('Atividades')->get($id)->caderno_id);$this->post('/operacao/identificar',['os_chave'=>'nova-os','tipo'=>'evolucao']);$this->assertResponseOk();$this->assertSame($id,json_decode((string)$this->_response->getBody(),true)['order']['id']);
     }
 }

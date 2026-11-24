@@ -34,7 +34,7 @@ class InsumosMelhoriasTest extends TestCase
         $t=Access::table('Cadernos');$book=$t->saveOrFail($t->newEntity(['nome'=>'Caderno','entressafra_id'=>$this->season,'setor_id'=>$sector->id,'ativo'=>true]));
         $this->activity=(new Activities(new FakeTotvs()))->link($this->admin,(int)$book->id,'os-0');
         $this->mockService(\App\Integration\Totvs\GatewayInterface::class,fn()=>new FakeTotvs());
-        PeriodoContexto::set($this->season);$this->login($this->admin);$this->enableCsrfToken();
+        PeriodoContexto::set($this->season);$this->login($this->admin);$this->enableCsrfToken('PCM_ENTRESSAFRA_CSRF');
     }
 
     protected function tearDown(): void {PeriodoContexto::set(null);parent::tearDown();}

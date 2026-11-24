@@ -28,10 +28,10 @@ class PeriodosNavegacaoTest extends TestCase
     private function auth(int $id,?int $season=null): void
     {$u=Access::actor($id);$this->session(['Auth'=>['id'=>$id,'stamp'=>hash('sha256',$u->senha_hash),'last'=>time()],'Periodo'=>$season===null?[]:['id'=>$season,'usuario_id'=>$id]]);}
     private function select(int $index=0): void
-    {$this->enableCsrfToken();$this->post('/escolher-entressafra/entrar',['periodo_id'=>$this->seasons[$index]]);$this->assertRedirect('/controle-pcm');$this->assertSession($this->seasons[$index],'Periodo.id');$this->session(['Periodo'=>$_SESSION['Periodo']]);}
+    {$this->enableCsrfToken('PCM_ENTRESSAFRA_CSRF');$this->post('/escolher-entressafra/entrar',['periodo_id'=>$this->seasons[$index]]);$this->assertRedirect('/controle-pcm');$this->assertSession($this->seasons[$index],'Periodo.id');$this->session(['Periodo'=>$_SESSION['Periodo']]);}
     public function testAdministrativeLoginStartsAtSelectionAndClearsPreviousPeriod(): void
     {
-        $this->enableCsrfToken();$this->post('/login',['login'=>'periodo-admin','senha'=>'teste123']);$this->assertRedirect('/escolher-entressafra');$this->assertSession(null,'Periodo.id');
+        $this->enableCsrfToken('PCM_ENTRESSAFRA_CSRF');$this->post('/login',['login'=>'periodo-admin','senha'=>'teste123']);$this->assertRedirect('/escolher-entressafra');$this->assertSession(null,'Periodo.id');
         $this->get('/controle-pcm');$this->assertRedirect('/escolher-entressafra');$this->get('/escolher-entressafra');$this->assertResponseOk();$this->assertResponseContains('2026/2027');$this->assertResponseContains('2025/2026');
     }
     public function testNotebookListAndDetailExposePresetListTool(): void
@@ -77,7 +77,7 @@ class PeriodosNavegacaoTest extends TestCase
     public function testComputerIgnoresStoredChoiceAndAlwaysUsesActiveWithoutSwitch(): void
     {
         $this->auth($this->computer,$this->seasons[1]);$this->get('/apontamentos');$this->assertResponseOk();$this->assertResponseContains('Entressafra 2026/2027');$this->assertResponseNotContains('Trocar entressafra');
-        $this->get('/escolher-entressafra');$this->assertResponseCode(403);$this->enableCsrfToken();$this->post('/escolher-entressafra/entrar',['periodo_id'=>$this->seasons[1]]);$this->assertResponseCode(403);
+        $this->get('/escolher-entressafra');$this->assertResponseCode(403);$this->enableCsrfToken('PCM_ENTRESSAFRA_CSRF');$this->post('/escolher-entressafra/entrar',['periodo_id'=>$this->seasons[1]]);$this->assertResponseCode(403);
         $this->get('/apontamentos?entressafra_id='.$this->seasons[1]);$this->assertResponseCode(403);
     }
     public function testOrmAndRawReportsEnforceSameSelectedContext(): void

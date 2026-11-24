@@ -35,7 +35,7 @@ class EtapaUmTest extends TestCase
 
     public function testFullRegistrationAndEditingFlow(): void
     {
-        $this->enableCsrfToken();
+        $this->enableCsrfToken('PCM_ENTRESSAFRA_CSRF');
         $this->post('/entressafras/add', ['nome' => '2026/2027', 'data_inicio' => '2026-11-01', 'data_fim' => '2027-03-31', 'status' => 'planejamento']);
         $this->assertResponseCode(302);
         $entressafra = $this->getTableLocator()->get('Entressafras')->find()->firstOrFail();
@@ -114,7 +114,7 @@ class EtapaUmTest extends TestCase
 
     public function testValidationFeedbackAndEscapedOutput(): void
     {
-        $this->enableCsrfToken();
+        $this->enableCsrfToken('PCM_ENTRESSAFRA_CSRF');
         $this->post('/entressafras/add', ['nome' => 'Teste', 'data_inicio' => '2027-02-01', 'data_fim' => '2027-01-01', 'status' => 'planejamento']);
         $this->assertResponseOk();
         $this->assertResponseContains('A data final deve ser igual ou posterior');

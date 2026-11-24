@@ -86,7 +86,7 @@ class CurvaReorganizacaoTest extends TestCase
         // A stale administrative transfer selection cannot enter initial linking.
         $conflict=Access::table('VinculosItens')->find()->where(['numero'=>'000002'])->firstOrFail();
         $service->select($this->admin,$token,[$conflict->id],false,true);
-        $this->enableCsrfToken();$this->post($url,['acao'=>'confirmar']);$this->assertRedirect();
+        $this->enableCsrfToken('PCM_ENTRESSAFRA_CSRF');$this->post($url,['acao'=>'confirmar']);$this->assertRedirect();
         $summary=$service->summary($this->admin,$token);
         $this->assertSame('processando',$summary['job']->estado);$this->assertSame(42,$summary['counts']['selecionadas']);
         $this->assertFalse((bool)Access::table('VinculosItens')->get($conflict->id)->selecionado);
@@ -101,7 +101,7 @@ class CurvaReorganizacaoTest extends TestCase
     public function testSimpleLinkCannotSkipPreviewOrSelectTransfersThroughLegacyPosts(): void
     {
         $service=new ListLinks($this->source());$token=$service->create($this->admin,$this->books[0],'000001');
-        $url='/cadernos/'.$this->books[0].'/vincular-lista?token='.$token;$this->enableCsrfToken();
+        $url='/cadernos/'.$this->books[0].'/vincular-lista?token='.$token;$this->enableCsrfToken('PCM_ENTRESSAFRA_CSRF');
         $this->post($url,['acao'=>'confirmar']);$this->assertResponseOk();$this->assertSame('preparando',$service->job($this->admin,$token)->estado);
         $this->post($url,['acao'=>'selecionar','transferir'=>'1','ids'=>[1]]);$this->assertResponseOk();
         $this->assertSame(0,Access::table('Atividades')->find()->count());
@@ -138,7 +138,7 @@ class CurvaReorganizacaoTest extends TestCase
     {
         $base='/cadernos/'.$this->books[0].'/vincular-lista';
         foreach(['invalid',str_repeat('f',48)] as $token){$this->get($base.'?token='.$token);$this->assertResponseOk();$this->assertResponseContains('Prévia');}
-        $this->enableCsrfToken();$this->post($base,['acao'=>'criar','numeros'=>"006183\n062200\nINVALIDO"]);$this->assertResponseOk();$this->assertResponseContains('062200');$this->assertResponseContains('INVALIDO');
+        $this->enableCsrfToken('PCM_ENTRESSAFRA_CSRF');$this->post($base,['acao'=>'criar','numeros'=>"006183\n062200\nINVALIDO"]);$this->assertResponseOk();$this->assertResponseContains('062200');$this->assertResponseContains('INVALIDO');
         $this->assertSame(0,Access::table('VinculosLotes')->find()->count());
     }
     public function testInterleavedConfirmationWorkersDoNotDuplicateLinks(): void
@@ -239,7 +239,7 @@ class CurvaReorganizacaoTest extends TestCase
     public function testMainPreviewShowsTransfersAndOpensConfirmationWithoutMovingOrders(): void
     {
         $this->sourceRows[]=$this->row(1);$id=$this->local(1,$this->books[1]);$s=new ListLinks($this->source());$token=$this->preview($s,'000001');$item=$s->summary($this->admin,$token)['transferRows']->first();$url='/cadernos/'.$this->books[0].'/vincular-lista?token='.$token;
-        $this->get($url);$this->assertResponseOk();$this->assertResponseContains('O.S. vinculadas a outros cadernos');$this->assertResponseContains('Selecionar todas');$this->assertResponseContains('Manter no caderno original');$this->enableCsrfToken();
+        $this->get($url);$this->assertResponseOk();$this->assertResponseContains('O.S. vinculadas a outros cadernos');$this->assertResponseContains('Selecionar todas');$this->assertResponseContains('Manter no caderno original');$this->enableCsrfToken('PCM_ENTRESSAFRA_CSRF');
         $this->post($url,['acao'=>'revisar_transferencias','visiveis'=>[$item->id],'transferencias'=>[$item->id]]);$this->assertRedirect();$this->get($url.'&revisar=1');$this->assertResponseOk();$this->assertResponseContains('id="transferencias-confirmacao"');
         $this->assertSame($this->books[1],(int)Access::table('Atividades')->get($id)->caderno_id);
         if(getenv('TRANSFERENCIAS_PREVIEW'))file_put_contents(TMP.'transferencias-lista-preview.html',(string)$this->_response->getBody());
@@ -278,7 +278,7 @@ class CurvaReorganizacaoTest extends TestCase
     }
     public function testQuickProgressTenToEightyUsesConfirmedIdAndPreservesSameWeekRevisions(): void
     {
-        $id=$this->local(5300);$this->progress($id,10,user:$this->computer);$this->auth($this->computer);$this->enableCsrfToken();
+        $id=$this->local(5300);$this->progress($id,10,user:$this->computer);$this->auth($this->computer);$this->enableCsrfToken('PCM_ENTRESSAFRA_CSRF');
         $this->post('/lancar-porcentagem',['atividade_id'=>$id,'referencia'=>'2026-10-19','revisao'=>1,'percentual'=>80,'chave'=>bin2hex(random_bytes(16))]);$this->assertResponseOk();$this->assertResponseContains('lançamento individual foi encerrado');
         $this->assertSame(10.0,(new Evolucao())->state($id,'2026-10-19')['percentual']);$this->assertCount(1,(new Evolucao())->history($id));
         $this->get('/lancar-porcentagem');$this->assertResponseOk();$this->assertResponseNotContains('id="os-pesquisa"');
@@ -325,7 +325,7 @@ class CurvaReorganizacaoTest extends TestCase
     public function testPartialWeightPagePreservesOtherValuesAndFrozenVersions(): void
     {
         $a=$this->local(1);$b=$this->local(2);$s=new Evolucao();$version=$s->version($this->admin,$this->season,'pesos','Original',[$a=>2,$b=>3],true);
-        $this->enableCsrfToken();$this->post('/evolucao/configuracao?entressafra_id='.$this->season,['acao'=>'versao','tipo'=>'pesos','nome'=>'Correção de uma página','parcial'=>'1','base_versao'=>(string)$version,'valores'=>[$a=>4]]);$this->assertRedirect();
+        $this->enableCsrfToken('PCM_ENTRESSAFRA_CSRF');$this->post('/evolucao/configuracao?entressafra_id='.$this->season,['acao'=>'versao','tipo'=>'pesos','nome'=>'Correção de uma página','parcial'=>'1','base_versao'=>(string)$version,'valores'=>[$a=>4]]);$this->assertRedirect();
         $versions=$s->versions($this->season,'pesos');$this->assertCount(2,$versions);$latest=json_decode($versions[0]['conteudo'],true);$this->assertEquals(4,$latest[$a]);$this->assertEquals(3,$latest[$b]);$this->assertEquals(2,json_decode($versions[1]['conteudo'],true)[$a]);
         $this->post('/evolucao/configuracao?entressafra_id='.$this->season,['acao'=>'versao','tipo'=>'pesos','nome'=>'Página antiga','parcial'=>'1','base_versao'=>(string)$version,'valores'=>[$b=>9]]);$this->assertResponseOk();$this->assertResponseContains('Outra pessoa alterou os pesos');$this->assertCount(2,$s->versions($this->season,'pesos'));
         try{$s->version($this->admin,$this->season,'pesos','Corrida entre páginas',[$a=>9,$b=>9],baseVersion:$version);$this->fail('A versão deve ser conferida também dentro do bloqueio transacional.');}catch(\DomainException $e){$this->assertStringContainsString('Outra pessoa alterou',$e->getMessage());}

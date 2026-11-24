@@ -37,7 +37,7 @@ class FilaPcmUnificadaTest extends TestCase
         $t=Access::table('Cadernos');$book=$t->saveOrFail($t->newEntity(['nome'=>'Caderno Moenda','entressafra_id'=>$this->season,'setor_id'=>$sector->id,'area_curva_id'=>$area->id,'ativo'=>true]));
         foreach(['os-0','os-2','os-3'] as $key){$id=(new Activities(new FakeTotvs()))->link($this->admin,(int)$book->id,$key);CompletedOrder::set($id,$this->admin);$this->activities[]=$id;}
         $this->mockService(\App\Integration\Totvs\GatewayInterface::class,fn()=>new FakeTotvs());
-        $this->login($this->admin);$this->enableCsrfToken();PeriodoContexto::set($this->season);
+        $this->login($this->admin);$this->enableCsrfToken('PCM_ENTRESSAFRA_CSRF');PeriodoContexto::set($this->season);
     }
     protected function tearDown(): void
     {

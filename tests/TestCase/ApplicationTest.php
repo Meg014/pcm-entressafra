@@ -33,6 +33,16 @@ class ApplicationTest extends TestCase
 {
     use IntegrationTestTrait;
 
+    public function testLoginFormSetsProductionCsrfCookie(): void
+    {
+        $this->get('/login');
+        $this->assertResponseOk();
+        $cookie = $this->_response->getCookieCollection()->get('PCM_ENTRESSAFRA_CSRF');
+        $this->assertTrue($cookie->isSecure());
+        $this->assertTrue($cookie->isHttpOnly());
+        $this->assertSame('Lax', $cookie->getSameSite()?->value);
+    }
+
     /**
      * Test bootstrap in production.
      *
@@ -77,14 +87,15 @@ class ApplicationTest extends TestCase
 
         $middleware = $app->middleware($middleware);
 
-        $this->assertInstanceOf(ErrorHandlerMiddleware::class, $middleware->current());
-        $middleware->seek(1);
-        $this->assertInstanceOf(HostHeaderMiddleware::class, $middleware->current());
-        $middleware->seek(2);
-        $this->assertInstanceOf(\App\Middleware\PeriodoContextoMiddleware::class, $middleware->current());
-        $middleware->seek(3);
-        $this->assertInstanceOf(AssetMiddleware::class, $middleware->current());
-        $middleware->seek(4);
-        $this->assertInstanceOf(RoutingMiddleware::class, $middleware->current());
+        $this->assertSame([
+            ErrorHandlerMiddleware::class,
+            \App\Middleware\CancelamentoApontamentoJsonMiddleware::class,
+            HostHeaderMiddleware::class,
+            \App\Middleware\PeriodoContextoMiddleware::class,
+            AssetMiddleware::class,
+            RoutingMiddleware::class,
+            \Cake\Http\Middleware\BodyParserMiddleware::class,
+            \Cake\Http\Middleware\CsrfProtectionMiddleware::class,
+        ], array_map('get_class', iterator_to_array($middleware)));
     }
 }

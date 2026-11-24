@@ -16,7 +16,7 @@ class CadernosPrincipalTest extends TestCase
         foreach(['2026/2027','2027/2028'] as $name){$t=Access::table('Entressafras');$this->periods[]=(int)$t->saveOrFail($t->newEntity(['nome'=>$name,'data_inicio'=>'2026-10-19','data_fim'=>'2027-04-10','status'=>'ativa']))->id;}
         foreach(['CALDEIRA','MOENDA','DESTILARIA','ELETRICA','TURBINAS','FABRICA','UTILIDADES'] as $name){$t=Access::table('AreasFabrica');$this->areas[]=(int)$t->saveOrFail(Access::entity($t,['nome'=>$name,'entressafra_id'=>$this->periods[0]]))->id;}
         $this->session(['Auth'=>['id'=>$user->id,'stamp'=>hash('sha256',$user->senha_hash),'last'=>time()],'Periodo'=>['id'=>$this->periods[0],'usuario_id'=>$user->id]]);
-        $this->enableCsrfToken();
+        $this->enableCsrfToken('PCM_ENTRESSAFRA_CSRF');
     }
     protected function tearDown(): void {PeriodoContexto::set(null);parent::tearDown();}
     private function createBook(string $name='CALDEIRA',?int $area=null): int

@@ -22,7 +22,7 @@ class EvolucaoSemanalTest extends TestCase
             for($j=0;$j<2;$j++){$t=Access::table('Atividades');$number=sprintf('%06d',5300+count($this->ids));$this->ids[]=(int)$t->saveOrFail(Access::entity($t,['entressafra_id'=>$this->season,'caderno_id'=>$j===0?$book->id:null,'area_curva_id'=>$j===1?$area->id:null,'setor_executante_id'=>$sector->id,'area_executante_totvs'=>$sector->area_totvs,'identificacao_setor'=>'area_totvs','os_numero'=>$number,'os_filial'=>'01','os_chave'=>\App\Integration\Totvs\Orders::key('01',$number),'descricao_atividade'=>'Manutenção '.$number,'bem'=>'BEM '.$j,'servico'=>'ENTRESSAFRA','situacao_totvs'=>'L','disponivel_totvs'=>true,'snapshot_totvs'=>'{}','criado_por'=>$this->admin,'created'=>$stamp,'modified'=>$stamp]))->id;}
             $t=Access::table('CalendariosOperacionais');$t->saveOrFail(Access::entity($t,['entressafra_id'=>$this->season,'chave'=>'area:'.$area->id,'area_fabrica_id'=>$area->id,'data_inicio'=>'2026-10-14','data_fim'=>'2026-11-09','inicio_confirmado'=>true]));
         }
-        PeriodoContexto::set($this->season);$this->sheet=new EvolucaoSemanal(new \DateTimeImmutable('2026-10-28T12:00:00Z'));$u=Access::actor($this->one);$this->session(['Auth'=>['id'=>$u->id,'stamp'=>hash('sha256',$u->senha_hash),'last'=>time()]]);$this->enableCsrfToken();
+        PeriodoContexto::set($this->season);$this->sheet=new EvolucaoSemanal(new \DateTimeImmutable('2026-10-28T12:00:00Z'));$u=Access::actor($this->one);$this->session(['Auth'=>['id'=>$u->id,'stamp'=>hash('sha256',$u->senha_hash),'last'=>time()]]);$this->enableCsrfToken('PCM_ENTRESSAFRA_CSRF');
     }
     protected function tearDown(): void {PeriodoContexto::set(null);parent::tearDown();}
     private function cell(int $i,string $ref,mixed $value): array

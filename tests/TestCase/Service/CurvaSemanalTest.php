@@ -28,7 +28,7 @@ class CurvaSemanalTest extends TestCase
         }
         $db=$activities->getConnection();$db->insert('evolucao_semanas',['entressafra_id'=>$this->season,'referencia'=>'2026-10-19']);$this->week=(int)$db->execute('SELECT id FROM evolucao_semanas WHERE entressafra_id=?',[$this->season])->fetch('assoc')['id'];
         foreach([100,80,50,20] as $i=>$value)$this->record($this->orders[$i],$value,1,'2026-10-19 12:00:00');
-        PeriodoContexto::set($this->season);$this->auth($this->admin);$this->enableCsrfToken();
+        PeriodoContexto::set($this->season);$this->auth($this->admin);$this->enableCsrfToken('PCM_ENTRESSAFRA_CSRF');
     }
     protected function tearDown(): void { PeriodoContexto::set(null);Access::table('Atividades')->getConnection()->execute('DELETE FROM mecanica_curva_versoes');parent::tearDown(); }
     private function auth(int $id): void
@@ -275,12 +275,61 @@ class CurvaSemanalTest extends TestCase
             $this->assertSame(67.5,$anchor['tendencia']);
             $future = $points[$anchor['semana']];
             $days = (new \DateTimeImmutable('2026-11-02'))->diff(new \DateTimeImmutable($future['fim']))->days;
-            $this->assertEqualsWithDelta(67.5 + $days * (2 + 2 * 3) / 21, $future['tendencia'], 0.000001);
+            $this->assertEqualsWithDelta(67.5 + $days * 2.55 / 7, $future['tendencia'], 0.000001);
         }
         $before = $read('automatica','2026-11-02');
         $this->record($this->orders[3],60,2,'2026-11-03 03:00:00');
         $this->assertSame($before,$read('automatica','2026-11-02'));
         $this->assertNotEquals(array_column($before,'tendencia'),array_column($read('automatica','2026-11-03'),'tendencia'));
+    }
+
+    public function testCompletionForecastIsVisibleAndUsesTheSelectedHistoricalCutoff(): void
+    {
+        $table = Access::table('Entressafras');
+        $season = $table->get($this->season);
+        $season->data_fim = '2026-12-08';
+        $table->saveOrFail($season);
+        $this->autoCalendar($this->area, '2026-10-14', '2026-12-08');
+        $db = $table->getConnection();
+
+        foreach ([
+            '2026-10-20'=>3.2,
+            '2026-10-27'=>5.7,
+            '2026-11-03'=>7.8,
+            '2026-11-10'=>8.8,
+            '2026-11-17'=>9.09,
+            '2026-11-24'=>9.52,
+        ] as $reference=>$value) {
+            $db->insert('evolucao_semanas', ['entressafra_id'=>$this->season, 'referencia'=>$reference]);
+            $this->week = (int)$db->execute(
+                'SELECT id FROM evolucao_semanas WHERE entressafra_id=? AND referencia=?',
+                [$this->season, $reference],
+            )->fetch('assoc')['id'];
+            foreach ($this->orders as $order) {
+                $this->record($order, $value, 1, $reference.' 12:00:00');
+            }
+        }
+
+        $now = new \DateTimeImmutable('2026-11-25T12:00:00-03:00');
+        $report = (new CurvaSemanal())->report($this->season, $this->area, $now, '2026-11-24', 'semanal');
+        $this->assertSame(9.52, $report['latest']['realizado']);
+        $this->assertSame('2028-05-31', $report['conclusao_estimada']);
+        foreach ($this->orders as $order) {
+            $this->record($order, 9.99, 2, '2026-11-25 12:00:00');
+        }
+        $afterCutoffRevision = (new CurvaSemanal())->report(
+            $this->season,
+            $this->area,
+            new \DateTimeImmutable('2026-11-26T12:00:00-03:00'),
+            '2026-11-24',
+            'semanal',
+        );
+        $this->assertSame($report['conclusao_estimada'], $afterCutoffRevision['conclusao_estimada']);
+
+        $this->get('/controle-pcm?exibicao=semanal&area_id='.$this->area.'&corte=2026-11-24');
+        $this->assertResponseOk();
+        $this->assertResponseContains('Previsão estimada de conclusão pela velocidade observada');
+        $this->assertResponseContains('31/05/2028');
     }
 
     public function testSectorStartEndAndNotStartedAreIndependent(): void

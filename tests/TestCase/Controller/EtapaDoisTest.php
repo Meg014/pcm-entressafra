@@ -85,7 +85,7 @@ class EtapaDoisTest extends TestCase
 
     public function testServiceCatalogHttpWritesAndHistoricalText(): void
     {
-        $this->enableCsrfToken();
+        $this->enableCsrfToken('PCM_ENTRESSAFRA_CSRF');
         $this->get('/servicos-sugeridos/add');$this->assertResponseOk();
         $this->post('/servicos-sugeridos/add',['descricao'=>'TORQUE ESPECIAL HTTP','ativo'=>'1']);$this->assertRedirect('/servicos-sugeridos');
         $catalog=Access::table('ServicosSugeridos');$suggestion=$catalog->find()->where(['descricao'=>'TORQUE ESPECIAL HTTP'])->firstOrFail();
@@ -240,7 +240,7 @@ class EtapaDoisTest extends TestCase
         $this->get('/cadernos/view/'.$book->id); $this->assertResponseOk(); $this->assertResponseContains('Mecânica'); $this->assertResponseContains('Elétrica');
         $this->get('/cadernos/edit/'.$book->id); $this->assertResponseOk(); $this->assertResponseContains('name="area_curva_id"');$this->assertResponseNotContains('name="setores[_ids][]"');
         $areas=Access::table('AreasFabrica');$area=$areas->saveOrFail(Access::entity($areas,['nome'=>'Moenda apresentação','entressafra_id'=>$book->entressafra_id]));
-        $this->enableCsrfToken(); $this->post('/cadernos/add',['nome'=>'Caderno pela interface','area_curva_id'=>$area->id,'setores'=>['_ids'=>$this->sectors],'area_fisica'=>'Moenda']);
+        $this->enableCsrfToken('PCM_ENTRESSAFRA_CSRF'); $this->post('/cadernos/add',['nome'=>'Caderno pela interface','area_curva_id'=>$area->id,'setores'=>['_ids'=>$this->sectors],'area_fisica'=>'Moenda']);
         $created=$table->find()->where(['nome'=>'Caderno pela interface'])->firstOrFail();
         $this->assertRedirect(['controller'=>'Cadernos','action'=>'index']);
         $this->assertCount(0,Access::notebookSectors((int)$created->id)); $this->assertNull($created->area_fisica);$this->assertSame((int)$area->id,(int)$created->area_curva_id);
@@ -309,7 +309,7 @@ class EtapaDoisTest extends TestCase
     {
         $id=$this->entries->save($this->admin,$this->input());
         foreach(['/atividades','/atividades/add','/atividades/view/'.$this->activities[0],'/apontamentos','/apontamentos/add','/apontamentos/view/'.$id,'/apontamentos/edit/'.$id,'/consulta-pcm','/usuarios','/usuarios/add','/usuarios/edit/'.$this->responsavel] as $url) { $this->get($url); $this->assertResponseOk(); }
-        $this->enableCsrfToken();
+        $this->enableCsrfToken('PCM_ENTRESSAFRA_CSRF');
         $this->post('/apontamentos/edit/'.$id,$this->input()+['motivo'=>'Ajuste pela interface']); $this->assertResponseCode(302);
         $this->post('/apontamentos/change/'.$id,['acao'=>'lancado','motivo'=>'Conferido manualmente','confirmar'=>'1']); $this->assertResponseCode(302);
         $this->get('/apontamentos/view/'.$id); $this->assertResponseContains('Conferido manualmente');
@@ -348,7 +348,7 @@ class EtapaDoisTest extends TestCase
         $this->assertSame(1,$xpath->query('//nav//a[@href="/consulta-pcm" and @aria-current="page"]')->length);
         $this->assertSame(0,$xpath->query('//nav//a[@href="/apontamentos" and @aria-current="page"]')->length);
         foreach ([$this->admin,$this->pcm,$this->responsavel] as $id) {
-            $this->authenticate($id); $this->enableCsrfToken(); $this->post('/logout'); $this->assertRedirect('/login');
+            $this->authenticate($id); $this->enableCsrfToken('PCM_ENTRESSAFRA_CSRF'); $this->post('/logout'); $this->assertRedirect('/login');
             $this->assertSession(null,'Auth.id');
             $this->session(['Auth'=>[]]); // Do not re-inject the fixture's pre-logout authentication.
             $this->get('/vinculos-lote'); $this->assertRedirect('/login');
@@ -357,7 +357,7 @@ class EtapaDoisTest extends TestCase
     public function testLoginAndProtectedRoutes(): void
     {
         $this->session(['Auth'=>[]]); $this->get('/apontamentos'); $this->assertRedirect('/login');
-        $this->enableCsrfToken(); $this->post('/login',['login'=>'pcm-teste','senha'=>'errada']); $this->assertResponseOk(); $this->assertResponseContains('Login ou senha inválidos');
+        $this->enableCsrfToken('PCM_ENTRESSAFRA_CSRF'); $this->post('/login',['login'=>'pcm-teste','senha'=>'errada']); $this->assertResponseOk(); $this->assertResponseContains('Login ou senha inválidos');
         $this->post('/login',['login'=>'pcm-teste','senha'=>'Teste-Restrito-2026']); $this->assertResponseCode(302);
         $this->assertSession($this->pcm, 'Auth.id');
         $this->authenticate($this->pcm);
@@ -375,7 +375,7 @@ class EtapaDoisTest extends TestCase
     {
         $id=$this->entries->save($this->admin,$this->input());
         $this->entries->save($this->admin,$this->input('2026-10-21T12:00','2026-10-21T14:00',1));
-        $this->enableCsrfToken();
+        $this->enableCsrfToken('PCM_ENTRESSAFRA_CSRF');
         $data=$this->input('2026-10-21T09:00','2026-10-21T13:00')+['motivo'=>'Correção a revisar']; $data['descricao']='Descrição preservada após conflito';
         $this->post('/apontamentos/edit/'.$id,$data);
         $this->assertResponseOk(); $this->assertResponseContains('Horários conflitantes'); $this->assertResponseContains('Descrição preservada após conflito');
@@ -418,7 +418,7 @@ class EtapaDoisTest extends TestCase
         $data['senha'] = $password;
         (new Users())->save($this->admin, $data, $id);
         $this->assertTrue(password_verify($password, Access::table('Usuarios')->get($id)->senha_hash));
-        $this->session(['Auth'=>[]]); $this->enableCsrfToken();
+        $this->session(['Auth'=>[]]); $this->enableCsrfToken('PCM_ENTRESSAFRA_CSRF');
         $this->post('/login', ['login'=>$data['login'],'senha'=>$password]);
         $this->assertResponseCode(302); $this->assertSession($id, 'Auth.id');
         $this->session(['Auth'=>[]]);
@@ -511,7 +511,7 @@ class EtapaDoisTest extends TestCase
         $this->get('/apontamentos/edit/'.$id); $this->assertResponseOk();
         $this->assertResponseContains('Pessoa confirmada · Férias (TOTVS)'); $this->assertResponseContains('Matrícula 000123');
         $this->assertResponseContains('Identificação preservada'); $this->assertResponseNotContains('funcionario_exibicao_');
-        $this->enableCsrfToken();
+        $this->enableCsrfToken('PCM_ENTRESSAFRA_CSRF');
         $this->post('/apontamentos/edit/'.$id,$input+['motivo'=>'Conferência do serviço','funcionario_nome'=>'Nome adulterado']);
         $this->assertRedirect(['controller'=>'Apontamentos','action'=>'view',$id]);
         $after=Access::table('Apontamentos')->get($id);
@@ -522,7 +522,7 @@ class EtapaDoisTest extends TestCase
     {
         $input=$this->input(); $input['atividade_id']='999999999';
         $input['funcionario_chave']='identificacao-invalida'; $input['funcionario_rotulo']='Nome somente digitado';
-        $this->enableCsrfToken(); $this->post('/apontamentos/add',$input);
+        $this->enableCsrfToken('PCM_ENTRESSAFRA_CSRF'); $this->post('/apontamentos/add',$input);
         $this->assertResponseOk(); $body=(string)$this->_response->getBody();
         $this->assertResponseContains('Serviço realizado');
         $this->assertResponseContains('21/10/2026'); $this->assertResponseContains('value="07:00"'); $this->assertResponseContains('value="11:00"');
@@ -743,7 +743,7 @@ class EtapaDoisTest extends TestCase
     }
     public function testMaskedDateFormCreatesAndEditsFullStoredDatetimes(): void
     {
-        $this->mockService(\App\Integration\Totvs\GatewayInterface::class,fn()=>new FakeTotvs());$this->enableCsrfToken();
+        $this->mockService(\App\Integration\Totvs\GatewayInterface::class,fn()=>new FakeTotvs());$this->enableCsrfToken('PCM_ENTRESSAFRA_CSRF');
         $this->get('/apontamentos/add');$this->assertResponseOk();$this->assertResponseNotContains('datetime-local');$this->assertResponseContains('name="apontamentos[0][data_servico]"');$this->assertResponseContains('name="apontamentos[0][hora_inicio_manha]"');$this->assertResponseContains('name="apontamentos[0][hora_fim_manha]"');
         $data=['atividade_id'=>$this->activities[0],'funcionario_chave'=>'pessoa-1','data_servico'=>'22/10/2026','hora_inicial'=>'07:30','hora_final'=>'11:30','termina_dia_seguinte'=>'0','descricao'=>'Serviço com máscara'];
         $this->post('/apontamentos/add',$data);$this->assertRedirect();$row=Access::table('Apontamentos')->find()->firstOrFail();$this->assertSame(240,$row->minutos);$this->assertSame('2026-10-22 10:30:00',$row->inicio->format('Y-m-d H:i:s'));
@@ -752,7 +752,7 @@ class EtapaDoisTest extends TestCase
     }
     public function testInvalidMaskedFieldsKeepAllValuesAndNeverModifyStoredEntry(): void
     {
-        $id=$this->entries->save($this->admin,$this->input());$this->enableCsrfToken();
+        $id=$this->entries->save($this->admin,$this->input());$this->enableCsrfToken('PCM_ENTRESSAFRA_CSRF');
         $this->post('/apontamentos/edit/'.$id,['data_servico'=>'31/02/2026','hora_inicial'=>'25:00','hora_final'=>'02:00','termina_dia_seguinte'=>'1','descricao'=>'Texto preservado','motivo'=>'Correção a conferir']);
         $this->assertResponseOk();foreach(['31/02/2026','25:00','02:00','Texto preservado','Correção a conferir'] as $value){$this->assertResponseContains($value);}
         $this->assertSame(240,Access::table('Apontamentos')->get($id)->minutos);$this->assertSame('Serviço realizado',Access::table('Apontamentos')->get($id)->descricao);
@@ -792,7 +792,7 @@ class EtapaDoisTest extends TestCase
         $a=['funcionario_chave'=>'pessoa-1','funcionario_rotulo'=>'Funcionário preservado','data_servico'=>'21/10/2026','hora_inicial'=>'08:00','hora_final'=>'09:00','descricao'=>'Descrição preservada'];
         $b=$a;$b['funcionario_chave']='pessoa-2';$b['descricao']='Outra descrição preservada';
         $c=$b;$c['funcionario_chave']='';$c['funcionario_rotulo']='Nome ainda digitado';
-        $this->enableCsrfToken();$this->post('/apontamentos/add',['atividade_id'=>$this->activities[0],'apontamentos'=>[$a,$b,$c]]);
+        $this->enableCsrfToken('PCM_ENTRESSAFRA_CSRF');$this->post('/apontamentos/add',['atividade_id'=>$this->activities[0],'apontamentos'=>[$a,$b,$c]]);
         $this->assertResponseOk();foreach(['Funcionário preservado','Descrição preservada','Outra descrição preservada','Nome ainda digitado','08:00','09:00','Conflito de horário'] as $text){$this->assertResponseContains($text);}
         $this->assertSame(1,Access::table('Apontamentos')->find()->count());
     }
@@ -816,7 +816,7 @@ class EtapaDoisTest extends TestCase
         $dom=new \DOMDocument();@$dom->loadHTML((string)$this->_response->getBody());$xpath=new \DOMXPath($dom);
         $this->assertSame(1,$xpath->query('//*[@id="entry-lines"]/article')->length);
         if(getenv('BATCH_PREVIEW')){file_put_contents(TMP.'batch-preview.html',(string)$this->_response->getBody());}
-        $this->enableCsrfToken();
+        $this->enableCsrfToken('PCM_ENTRESSAFRA_CSRF');
         $this->post('/apontamentos/add',['atividade_id'=>$this->activities[0],'apontamentos'=>[['funcionario_chave'=>'pessoa-1','data_servico'=>'21/10/2026','hora_inicial'=>'07:00','hora_final'=>'11:00','descricao'=>'Lote único']]]);
         $this->assertRedirect();$this->assertSame(1,Access::table('Apontamentos')->find()->count());
         $this->assertSession('1 apontamentos registrados com sucesso.','Flash.flash.0.message');
@@ -862,7 +862,7 @@ class EtapaDoisTest extends TestCase
         $this->assertSame(85.0,$order['percentual_atual']);$this->assertArrayNotHasKey('liberada_apontamento',$order);
         $this->get('/apontamentos/add?atividade_id='.$this->activities[0]);$this->assertResponseOk();
         $this->assertResponseContains('Percentual atual da O.S.: 85%');$this->assertResponseNotContains('100% de evolução');$this->assertResponseNotContains('Ainda não liberada');
-        $this->enableCsrfToken();$data=$this->input();
+        $this->enableCsrfToken('PCM_ENTRESSAFRA_CSRF');$data=$this->input();
         $this->post('/apontamentos/add',['atividade_id'=>$this->activities[0],'apontamentos'=>[$data]]);$this->assertRedirect();
         $this->assertSame(1,Access::table('Apontamentos')->find()->count());
         $this->assertSame(85.0,\App\Service\OrderProgress::status($this->activities[0])['percentual_atual']);
@@ -871,7 +871,7 @@ class EtapaDoisTest extends TestCase
         $id=$this->entries->save($this->admin,$this->input());$data=$this->input()+['motivo'=>'Ajuste de horário'];$data['fim']='2026-10-21T12:00';
         try{$this->entries->save($this->pcm,$data,$id);$this->fail();}catch(\Cake\Http\Exception\ForbiddenException){$this->assertSame(240,Access::table('Apontamentos')->get($id)->minutos);}
         $this->authenticate($this->pcm);$this->get('/apontamentos/view/'.$id);$this->assertResponseNotContains('Editar hora');
-        $this->enableCsrfToken();$this->post('/apontamentos/edit/'.$id,$data);$this->assertResponseCode(403);
+        $this->enableCsrfToken('PCM_ENTRESSAFRA_CSRF');$this->post('/apontamentos/edit/'.$id,$data);$this->assertResponseCode(403);
         $this->authenticate($this->admin);$this->get('/apontamentos/view/'.$id);$this->assertResponseContains('Editar hora');
         // Completion may change later; correcting an existing record remains possible.
         \App\Test\Support\CompletedOrder::set($this->activities[0],$this->admin,85);
@@ -900,7 +900,7 @@ class EtapaDoisTest extends TestCase
             catch(\App\Service\BatchEntryException $e){$this->assertArrayHasKey(1,$e->errors);}
             $this->assertSame(0,Access::table('Insumos')->find()->count());
         }
-        $this->enableCsrfToken();$this->post('/insumos/add',['atividade_id'=>$this->activities[0],'insumos'=>[$this->supply(),$this->supply('0')]]);
+        $this->enableCsrfToken('PCM_ENTRESSAFRA_CSRF');$this->post('/insumos/add',['atividade_id'=>$this->activities[0],'insumos'=>[$this->supply(),$this->supply('0')]]);
         $this->assertResponseOk();$this->assertResponseContains('Rolamento');$this->assertResponseContains('Pessoa selecionada');$this->assertResponseContains('Quantidade deve ser maior que zero');
         $table=Access::table('Insumos');$calls=0;
         $listener=function()use(&$calls):void{if(++$calls===2)throw new \RuntimeException('Falha simulada na segunda linha');};
@@ -924,7 +924,7 @@ class EtapaDoisTest extends TestCase
         $this->mockService(\App\Integration\Totvs\GatewayInterface::class,fn()=>new FakeTotvs());
         $this->get('/insumos/add');$this->assertResponseOk();$this->assertResponseContains('Salvar insumos');$this->assertResponseContains('name="insumos[0][funcionario_chave]"');
         if(getenv('BATCH_PREVIEW'))file_put_contents(TMP.'supplies-preview.html',(string)$this->_response->getBody());
-        $this->enableCsrfToken();$this->post('/insumos/add',['atividade_id'=>$this->activities[0],'quantidade_linhas'=>'1','insumos'=>[$this->supply()]]);$this->assertRedirect('/insumos');$this->assertSame(1,Access::table('Insumos')->find()->count());
+        $this->enableCsrfToken('PCM_ENTRESSAFRA_CSRF');$this->post('/insumos/add',['atividade_id'=>$this->activities[0],'quantidade_linhas'=>'1','insumos'=>[$this->supply()]]);$this->assertRedirect('/insumos');$this->assertSame(1,Access::table('Insumos')->find()->count());
     }
     private function splitInput(array $hours=['07:00','11:00','12:00','17:00']): array
     {

@@ -21,7 +21,7 @@ try {
     if (!$html || !str_contains($http_response_header[0]??'','200') || !str_contains($html,'Vincular O.S. em Lote') || !preg_match('/name="_csrfToken"[^>]*value="([^"]+)"/',$html,$match)) { throw new RuntimeException(); }
     $csrf=html_entity_decode($match[1],ENT_QUOTES,'UTF-8');
     foreach ($http_response_header as $header) {
-        if (preg_match('/^Set-Cookie: (csrfToken)=([^;]+)/i',$header,$cookieMatch)) { $cookie.='; '.$cookieMatch[1].'='.$cookieMatch[2]; }
+        if (preg_match('/^Set-Cookie: (PCM_ENTRESSAFRA_CSRF)=([^;]+)/i',$header,$cookieMatch)) { $cookie.='; '.$cookieMatch[1].'='.$cookieMatch[2]; }
     }
     $api=static function(string $action,array $input=[],bool $post=false) use($cookie,$csrf): array {
         $params=['acao'=>$action]+$input; $url='http://127.0.0.1:8766/vinculos-lote/api';

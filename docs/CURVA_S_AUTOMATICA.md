@@ -78,7 +78,7 @@ O realizado verde só aparece nas posições consolidadas já encerradas; semana
 
 ## Tendência
 
-A linha laranja tracejada parte do último realizado do setor. A velocidade usa até quatro variações semanais ponderadas por recência, mesmo quando o gráfico agrupa quinze dias. A comparação das fórmulas, os critérios de histórico e o corte da Caldeiraria estão na [documentação da tendência](curva-s-tendencia.md).
+A linha laranja tracejada parte do último realizado do setor. A velocidade combina a média de até seis variações semanais (70%) com uma média ponderada por recência (30%), sem arredondar os percentuais intermediários, mesmo quando o gráfico agrupa quinze dias. A previsão de conclusão é exibida após quatro variações válidas e velocidade positiva. A comparação das fórmulas e o corte da Caldeiraria estão na [documentação da tendência](curva-s-tendencia.md).
 
 ## Migrations, dados e execução
 

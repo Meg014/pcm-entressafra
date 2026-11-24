@@ -77,7 +77,7 @@ class OperacaoSimplificadaTest extends TestCase
     public function testComputerCanSaveValidEntryAndLookupEmployeeButCannotConfirm(): void
     {
         \App\Test\Support\CompletedOrder::set($this->activities[0],$this->admin);
-        $this->auth($this->computer);$this->enableCsrfToken();
+        $this->auth($this->computer);$this->enableCsrfToken('PCM_ENTRESSAFRA_CSRF');
         $this->get('/apontamentos/funcionarios?q=Maria');$this->assertResponseOk();$this->assertResponseContains('0001');
         $this->post('/apontamentos/add',['atividade_id'=>$this->activities[0],'funcionario_chave'=>'pessoa-1','inicio'=>'2026-10-01T07:00','fim'=>'2026-10-01T09:00','descricao'=>'Teste operacional']);$this->assertRedirect('/apontamentos/add');
         $entry=Access::table('Apontamentos')->find()->firstOrFail();$this->assertSame($this->computer,(int)$entry->criado_por);$this->assertSame('pendente',$entry->controle_pcm);
@@ -125,7 +125,7 @@ class OperacaoSimplificadaTest extends TestCase
     }
     public function testQueueHttpConfirmationRequiresExplicitConsentAndTracksRevision(): void
     {
-        $id=$this->entry();$this->enableCsrfToken();$data=['selecionados'=>[$id],'revisoes'=>[$id=>0],'acao'=>'lancado'];
+        $id=$this->entry();$this->enableCsrfToken('PCM_ENTRESSAFRA_CSRF');$data=['selecionados'=>[$id],'revisoes'=>[$id=>0],'acao'=>'lancado'];
         $this->post('/fila-pcm/os/'.$this->activities[0],$data);$this->assertResponseOk();$this->assertSame('pendente',Access::table('Apontamentos')->get($id)->controle_pcm);
         $this->post('/fila-pcm/os/'.$this->activities[0],$data+['confirmar'=>'1']);$this->assertRedirect();$this->assertSame('lancado',Access::table('Apontamentos')->get($id)->controle_pcm);
     }
@@ -133,7 +133,7 @@ class OperacaoSimplificadaTest extends TestCase
     {
         $this->auth($this->computer);$this->get('/operacao/ordens?q=os-&tipo=evolucao');$this->assertResponseOk();$row=json_decode((string)$this->_response->getBody(),true)['results'][0];
         $t=Access::table('AreasFabrica');$area=$t->saveOrFail(Access::entity($t,['nome'=>'MOENDA','entressafra_id'=>$this->season]));$book=Access::table('Atividades')->get($this->activities[0])->caderno_id;Access::table('Cadernos')->updateAll(['area_curva_id'=>$area->id],['id'=>$book]);
-        $this->enableCsrfToken();$this->post('/lancar-porcentagem?area_id='.$area->id,['chave'=>bin2hex(random_bytes(16)),'alteracoes_json'=>json_encode([['atividade_id'=>$this->activities[0],'percentual'=>30,'base'=>0,'revisao'=>0,'referencia'=>$row['referencia']]])]);$this->assertRedirect();
+        $this->enableCsrfToken('PCM_ENTRESSAFRA_CSRF');$this->post('/lancar-porcentagem?area_id='.$area->id,['chave'=>bin2hex(random_bytes(16)),'alteracoes_json'=>json_encode([['atividade_id'=>$this->activities[0],'percentual'=>30,'base'=>0,'revisao'=>0,'referencia'=>$row['referencia']]])]);$this->assertRedirect();
         $state=(new Evolucao())->state($this->activities[0],$row['referencia']);$this->assertSame(30.0,$state['percentual']);$this->assertSame($this->computer,(int)$state['registro']['usuario_id']);
         $this->post('/lancar-porcentagem',['atividade_id'=>$this->activities[0],'percentual'=>20]);$this->assertResponseOk();$this->assertResponseContains('lançamento individual foi encerrado');
         $this->get('/lancar-porcentagem');$this->assertResponseOk();$this->assertResponseNotContains('name="referencia"');$this->assertResponseNotContains('name="setor_id"');$this->assertResponseNotContains('name="caderno_id"');
@@ -148,7 +148,7 @@ class OperacaoSimplificadaTest extends TestCase
     }
     public function testLoginDestinationsAndLegacyConfirmationRequireConsent(): void
     {
-        $this->enableCsrfToken();$this->session(['Auth'=>[]]);$this->post('/login',['login'=>'computador-1','senha'=>'teste123']);$this->assertRedirect('/apontamentos/add');
+        $this->enableCsrfToken('PCM_ENTRESSAFRA_CSRF');$this->session(['Auth'=>[]]);$this->post('/login',['login'=>'computador-1','senha'=>'teste123']);$this->assertRedirect('/apontamentos/add');
         $this->session(['Auth'=>[]]);$this->post('/login',['login'=>'op-admin','senha'=>'teste123']);$this->assertRedirect('/escolher-entressafra');
         $this->auth($this->admin);
         $id=$this->entry();$this->post('/apontamentos/change/'.$id,['acao'=>'lancado','motivo'=>'Conferido']);$this->assertRedirect();$this->assertSame('pendente',Access::table('Apontamentos')->get($id)->controle_pcm);
@@ -173,7 +173,7 @@ class OperacaoSimplificadaTest extends TestCase
     }
     public function testComputerRestoresCollectedPhpSessionAndLogoutRevokesCredential(): void
     {
-        $this->enableCsrfToken();$this->session(['Auth'=>[]]);
+        $this->enableCsrfToken('PCM_ENTRESSAFRA_CSRF');$this->session(['Auth'=>[]]);
         $this->post('/login',['login'=>'computador-1','senha'=>'teste123']);$this->assertRedirect('/apontamentos/add');
         $cookie=$this->_response->getCookieCollection()->get(\App\Service\ComputerSession::COOKIE);$credential=$cookie->getValue();
         $this->assertTrue($cookie->isHttpOnly());$this->assertSame('Lax',$cookie->getSameSite()->value);

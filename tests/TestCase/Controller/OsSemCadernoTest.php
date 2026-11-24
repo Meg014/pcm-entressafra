@@ -19,7 +19,7 @@ class OsSemCadernoTest extends TestCase
         $t=Access::table('AreasFabrica');$area=$t->saveOrFail(Access::entity($t,['nome'=>'MOENDA','entressafra_id'=>$this->season]));
         $t=Access::table('Cadernos');$this->book=(int)$t->saveOrFail(Access::entity($t,['nome'=>'CALDEIRARIA - MOENDA','entressafra_id'=>$this->season,'area_curva_id'=>$area->id,'ativo'=>true]))->id;
         $this->secondBook=(int)$t->saveOrFail(Access::entity($t,['nome'=>'OUTRO CADERNO','entressafra_id'=>$this->season,'area_curva_id'=>$area->id,'ativo'=>true]))->id;
-        $this->login($this->admin);$this->enableCsrfToken();PeriodoContexto::set($this->season);
+        $this->login($this->admin);$this->enableCsrfToken('PCM_ENTRESSAFRA_CSRF');PeriodoContexto::set($this->season);
     }
     protected function tearDown(): void {PeriodoContexto::set(null);parent::tearDown();}
     private function user(string $role): int

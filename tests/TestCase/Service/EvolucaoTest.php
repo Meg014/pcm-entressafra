@@ -74,7 +74,7 @@ class EvolucaoTest extends TestCase
     }
     public function testPartialHttpBatchSavesOnlyFilledOrderAndUnupdatedCompletionIsInformative(): void
     {
-        $this->auth($this->admin);$this->enableCsrfToken();
+        $this->auth($this->admin);$this->enableCsrfToken('PCM_ENTRESSAFRA_CSRF');
         $this->post('/evolucao/correcoes?entressafra_id='.$this->season.'&referencia=2026-09-07',['chave'=>bin2hex(random_bytes(16)),'alteracoes'=>[['atividade_id'=>$this->activities[0],'percentual'=>100,'revisao'=>0]]]);
         $this->assertRedirect();$this->assertSame(1,Access::table('EvolucaoRegistros')->find()->count());
         $report=$this->service->report($this->season,$this->service->activities($this->season),'2026-09-14');
@@ -197,7 +197,7 @@ class EvolucaoTest extends TestCase
         $this->auth($this->admin);$url='/evolucao/correcoes?entressafra_id='.$this->season.'&referencia=2026-09-07';
         $data=['chave'=>bin2hex(random_bytes(16)),'alteracoes'=>[['atividade_id'=>$this->activities[0],'percentual'=>10,'revisao'=>0]]];
         $this->post($url,$data);$this->assertResponseCode(403);
-        $this->enableCsrfToken();$this->post($url,$data);$this->assertRedirect();$this->assertSame(10.0,$this->service->state($this->activities[0],'2026-09-07')['percentual']);
+        $this->enableCsrfToken('PCM_ENTRESSAFRA_CSRF');$this->post($url,$data);$this->assertRedirect();$this->assertSame(10.0,$this->service->state($this->activities[0],'2026-09-07')['percentual']);
     }
     public function testFullDatetimesDifferentDaysConsecutiveAndOver24Hours(): void
     {
@@ -231,7 +231,7 @@ class EvolucaoTest extends TestCase
         $this->save('2026-09-21',70);
         $r=$this->service->report($this->season,$this->service->activities($this->season),'2026-09-21');
         $future=array_values(array_filter($r['points'],fn($p)=>$p['referencia']==='2026-09-28'))[0];
-        $this->assertEqualsWithDelta(48.33333,$future['tendencia'],0.00001);
+        $this->assertSame(49.5,$future['tendencia']);
     }
     public function testIdempotencyPayloadReuseIsRejected(): void
     {
@@ -260,7 +260,7 @@ class EvolucaoTest extends TestCase
     public function testExcelTemplateDownloadsAndManagerDataCannotBeChangedByResponsible(): void
     {
         $this->auth($this->admin);$this->get('/evolucao/modelo/pesos?entressafra_id='.$this->season);$this->assertResponseOk();$this->assertStringStartsWith('PK',(string)$this->_response->getBody());
-        $this->enableCsrfToken();$this->auth($this->responsible);$this->post('/evolucao/configuracao?entressafra_id='.$this->season,['acao'=>'versao','tipo'=>'pesos','valores'=>array_fill_keys($this->activities,1),'nome'=>'Tentativa']);$this->assertResponseCode(403);
+        $this->enableCsrfToken('PCM_ENTRESSAFRA_CSRF');$this->auth($this->responsible);$this->post('/evolucao/configuracao?entressafra_id='.$this->season,['acao'=>'versao','tipo'=>'pesos','valores'=>array_fill_keys($this->activities,1),'nome'=>'Tentativa']);$this->assertResponseCode(403);
         $this->assertCount(0,$this->service->versions($this->season,'pesos'));
     }
     public function testFuturePhysicalExecutionIsRejected(): void
