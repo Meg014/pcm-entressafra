@@ -42,7 +42,7 @@ O gráfico separa:
 
 - **Programado:** azul-escuro; metas cadastradas e, para semanas consolidadas, o valor preservado na versão do fechamento.
 - **Realizado:** verde; somente posições consolidadas. Períodos ainda não apurados ficam vazios.
-- **Tendência:** laranja tracejado, identificada como estimativa. Exige duas posições consolidadas com realizado. Ritmo diário = `(último realizado − penúltimo realizado) / dias entre as referências`. Projeção = `último realizado + ritmo × dias futuros`, limitada a 0–100%. Nenhuma projeção é gravada como execução real.
+- **Tendência** em laranja tracejado. A estimativa parte do último realizado e usa a velocidade semanal observada no setor. Consulte a [regra de cálculo e a comparação com a fórmula anterior](curva-s-tendencia.md).
 
 ## Comando e futuro agendamento
 

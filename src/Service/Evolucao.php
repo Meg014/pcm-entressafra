@@ -208,11 +208,10 @@ final class Evolucao
         $observed=array_values(array_filter($past,function($p)use($activities,$asOf) {
             foreach($activities as $a) { if (!$this->state((int)$a['id'],$p['referencia'],$asOf)['pendente']) { return true; } } return false;
         }));
-        if (count($observed)>=2) {
-            $first=$observed[max(0,count($observed)-4)]; $last=end($observed);
-            $days=(strtotime($last['referencia'])-strtotime($first['referencia']))/86400;
-            if ($days>0) { foreach ($points as &$p) { if ($p['referencia']>=$last['referencia']) { $p['tendencia']=round(max(0,min(100,$last['realizado']+($last['realizado']-$first['realizado'])/$days*(strtotime($p['referencia'])-strtotime($last['referencia']))/86400)),2); } } unset($p); }
-        }
+        $history = count($observed) >= 2
+            ? array_values(array_filter($past, static fn($p) => $p['referencia'] >= $observed[0]['referencia']))
+            : [];
+        $points = CurvaSemanal::trend($points, $history);
         $last=$past?end($past):null; $previous=count($past)>1?$past[count($past)-2]:null;
         $actual=$last['realizado']??null; $target=$scopedCalendars?($last['programado']??null):($targets[$reference]??null);
         // The approved plan is for the complete season, never silently reused as a sector target.

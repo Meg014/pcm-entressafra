@@ -59,12 +59,45 @@ class ProgramacaoAutomaticaTest extends TestCase
         $this->assertFalse($missing['configurado']);$this->assertNull(ProgramacaoAutomatica::position($missing,'2026-10-26')['programado']);
         $empty=$this->calendar('2026-10-24','2026-10-25',[1,2,3,4,5]);$this->assertFalse($empty['configurado']);$this->assertSame([],ProgramacaoAutomatica::curve($empty,'2026-10-24','2026-10-25'));
     }
-    public function testMovingAverageUsesRecentThreeVariationsAndNotOnlyLastSlope(): void
+    public static function weeklyMeasurements(): array
+    {
+        return [
+            'aceleração' => [[10, 11, 13, 16, 20], 23.],
+            'desaceleração gradual' => [[10, 14, 17, 19, 20], 22.],
+            'sem avanço' => [[10, 10, 10, 10, 10], 10.],
+            'queda no histórico' => [[20, 18, 15, 13, 10], 10.],
+            'poucos dados' => [[9, 10], null],
+            'conclusão' => [[100], 100.],
+            'avanço recente de 0,43' => [[7.69, 7.89, 8.29, 9.09, 9.52], 10.032],
+        ];
+    }
+
+    #[\PHPUnit\Framework\Attributes\DataProvider('weeklyMeasurements')]
+    public function testForecastFromLastActual(array $values, ?float $expected): void
+    {
+        $points = [];
+        $date = new \DateTimeImmutable('2026-10-26');
+        foreach ([...$values, null] as $value) {
+            $points[] = ['referencia'=>$date->format('Y-m-d'), 'programado'=>3.85, 'realizado'=>$value, 'tendencia'=>null];
+            $date = $date->modify('+7 days');
+        }
+        $forecast = CurvaSemanal::trend($points);
+        $this->assertSame(array_column($points,'realizado'), array_column($forecast,'realizado'));
+        $this->assertSame(array_column($points,'programado'), array_column($forecast,'programado'));
+        if ($expected === null) {
+            $this->assertNull(end($forecast)['tendencia']);
+        } else {
+            $this->assertSame((float)end($values), $forecast[count($values)-1]['tendencia']);
+            $this->assertEqualsWithDelta($expected, end($forecast)['tendencia'], 0.000001);
+        }
+    }
+
+    public function testRecentAccelerationReceivesMoreWeightAndForecastStopsAtCompletion(): void
     {
         $points=[];foreach([['2026-09-29',10],['2026-10-06',20],['2026-10-13',40],['2026-10-20',70],['2026-10-27',null],['2026-11-03',null]] as [$reference,$value])$points[]=['referencia'=>$reference,'realizado'=>$value,'tendencia'=>null];
-        $trend=CurvaSemanal::trend($points);$this->assertSame(90.,$trend[4]['tendencia']);$this->assertSame(100.,$trend[5]['tendencia']);$this->assertNull($trend[4]['realizado']);
+        $trend=CurvaSemanal::trend($points);$this->assertEqualsWithDelta(93.333333,$trend[4]['tendencia'],0.00001);$this->assertSame(100.,$trend[5]['tendencia']);$this->assertNull($trend[4]['realizado']);
         $this->assertSame(array_slice($points,0,2),CurvaSemanal::trend(array_slice($points,0,2)));
         $falling=$points;foreach([60,50,30,10] as $i=>$value)$falling[$i]['realizado']=$value;
-        $this->assertSame(0.,CurvaSemanal::trend($falling)[4]['tendencia']);
+        $this->assertSame(10.,CurvaSemanal::trend($falling)[4]['tendencia']);
     }
 }

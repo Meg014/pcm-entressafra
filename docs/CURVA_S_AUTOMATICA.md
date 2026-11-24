@@ -78,15 +78,7 @@ O realizado verde só aparece nas posições consolidadas já encerradas; semana
 
 ## Tendência
 
-Não foi fornecida uma fórmula de tendência da planilha; aplica-se a alternativa solicitada: média móvel das últimas variações semanais.
-
-- Exige no mínimo três apurações com realizado, isto é, duas variações.
-- Usa as três variações mais recentes, quando disponíveis (até quatro posições consolidadas).
-- Cada variação é normalizada para sete dias: `v = (realizado atual − realizado anterior) × 7 / dias entre referências`.
-- O ritmo é a média aritmética dessas variações.
-- Para uma data futura: `tendência = último realizado + ritmo médio × dias futuros / 7`, limitada a 0%–100%.
-
-Não há arredondamento intermediário. A linha laranja é tracejada e identificada como estimativa; não é gravada como realizado e não retroalimenta o programado. Uma ou duas apurações não são suficientes para gerar essa projeção.
+A linha laranja tracejada parte do último realizado do setor. A velocidade usa até quatro variações semanais ponderadas por recência, mesmo quando o gráfico agrupa quinze dias. A comparação das fórmulas, os critérios de histórico e o corte da Caldeiraria estão na [documentação da tendência](curva-s-tendencia.md).
 
 ## Migrations, dados e execução
 

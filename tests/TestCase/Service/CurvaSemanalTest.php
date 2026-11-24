@@ -251,6 +251,38 @@ class CurvaSemanalTest extends TestCase
         $this->assertSame($cut,$service->report($this->season,$this->area,$now,'2026-11-09','automatica'));
         $this->assertSame(67.5,$service->report($this->season,$this->area,$now)['latest']['realizado']);
     }
+    public function testForecastUsesWeeklyHistoryInBothViewsAndHonorsRevisionCutoff(): void
+    {
+        $table = Access::table('Entressafras');
+        $season = $table->get($this->season);
+        $season->data_fim = '2026-12-14';
+        $table->saveOrFail($season);
+        $this->autoCalendar($this->area,'2026-10-14','2026-12-14');
+        $curve = new CurvaSemanal();
+        $now = new \DateTimeImmutable('2026-11-10T12:00:00-03:00');
+        $read = fn($mode, $cut) => $curve->report($this->season,$this->area,$now,$cut,$mode)['points'];
+        $this->assertSame([], array_filter(array_column($read('automatica','2026-11-02'),'tendencia')));
+        $db = $table->getConnection();
+        foreach (['2026-10-26'=>28,'2026-11-02'=>40] as $day=>$value) {
+            $db->insert('evolucao_semanas',['entressafra_id'=>$this->season,'referencia'=>$day]);
+            $this->week = (int)$db->execute('SELECT id FROM evolucao_semanas WHERE entressafra_id=? AND referencia=?',[$this->season,$day])->fetch()[0];
+            $this->record($this->orders[3],$value,1,$day.' 12:00:00');
+        }
+        foreach (['automatica','semanal'] as $mode) {
+            $points = $read($mode,'2026-11-02');
+            $anchor = array_values(array_filter($points,fn($p)=>$p['realizado']!==null));
+            $anchor = end($anchor);
+            $this->assertSame(67.5,$anchor['tendencia']);
+            $future = $points[$anchor['semana']];
+            $days = (new \DateTimeImmutable('2026-11-02'))->diff(new \DateTimeImmutable($future['fim']))->days;
+            $this->assertEqualsWithDelta(67.5 + $days * (2 + 2 * 3) / 21, $future['tendencia'], 0.000001);
+        }
+        $before = $read('automatica','2026-11-02');
+        $this->record($this->orders[3],60,2,'2026-11-03 03:00:00');
+        $this->assertSame($before,$read('automatica','2026-11-02'));
+        $this->assertNotEquals(array_column($before,'tendencia'),array_column($read('automatica','2026-11-03'),'tendencia'));
+    }
+
     public function testSectorStartEndAndNotStartedAreIndependent(): void
     {
         $table=Access::table('Entressafras');$row=$table->get($this->season);$row->data_fim='2027-03-01';$table->saveOrFail($row);

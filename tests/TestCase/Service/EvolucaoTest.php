@@ -227,7 +227,11 @@ class EvolucaoTest extends TestCase
         $r=$this->service->report($this->season,$this->service->activities($this->season),'2026-09-14');
         $this->assertNull($r['programado']);
         $future=array_values(array_filter($r['points'],fn($p)=>$p['referencia']==='2026-09-21'))[0];
-        $this->assertNull($future['realizado']);$this->assertSame(45.0,$future['tendencia']);
+        $this->assertNull($future['realizado']);$this->assertNull($future['tendencia']);
+        $this->save('2026-09-21',70);
+        $r=$this->service->report($this->season,$this->service->activities($this->season),'2026-09-21');
+        $future=array_values(array_filter($r['points'],fn($p)=>$p['referencia']==='2026-09-28'))[0];
+        $this->assertEqualsWithDelta(48.33333,$future['tendencia'],0.00001);
     }
     public function testIdempotencyPayloadReuseIsRejected(): void
     {
